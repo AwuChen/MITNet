@@ -9,7 +9,7 @@ const driver = neo4j.driver(
   process.env.NEO4J_URI || 'neo4j+s://23f1f8d0.databases.neo4j.io',
   neo4j.auth.basic(
     process.env.NEO4J_USER || 'neo4j',
-    process.env.NEO4J_PASSWORD || 'lwW-hWpruNTNNrD-gCAMreXMZcUlAFcrjxmaeL94ZzM'
+    process.env.NEO4J_PASSWORD || 'xQ3FQK4HZq5o-lbJJD5yHrTSdJQiejLW3iiejdoGs_E'
   ),
   {
     //encrypted: process.env.NEO4J_ENCRYPTED ? 'ENCRYPTION_ON' : 'ENCRYPTION_OFF',
