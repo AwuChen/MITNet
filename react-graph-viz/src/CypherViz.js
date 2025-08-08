@@ -1032,7 +1032,7 @@ const NFCTrigger = ({ addNode }) => {
         }
 
         setTimeout(() => {
-          window.location.assign("/craft-network/#/");
+          window.location.assign("/GreifNet/#/");
           }, 2000);
         };
 
@@ -1698,7 +1698,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the artist in Kyoto..."
+        placeholder="Show me all the entrepreneurs from USC..."
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
@@ -1709,7 +1709,7 @@ return (
           }
         }}
       />
-      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/craft-network-3d/", "_blank")}>Visualize3D</button>
+      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/GreifNet/", "_blank")}>Visualize3D</button>
       <button id="info" onClick={() => window.open("https://www.hako.soooul.xyz/drafts/washi", "_blank")}>Info</button>
       
 

@@ -6,7 +6,7 @@ import * as serviceWorker from './serviceWorker';
 import * as neo4j from  'neo4j-driver';
 
 const driver = neo4j.driver(
-  process.env.NEO4J_URI || 'neo4j+s://7714be1a.databases.neo4j.io',
+  process.env.NEO4J_URI || 'neo4j+s://23f1f8d0.databases.neo4j.io',
   neo4j.auth.basic(
     process.env.NEO4J_USER || 'neo4j',
     process.env.NEO4J_PASSWORD || 'lwW-hWpruNTNNrD-gCAMreXMZcUlAFcrjxmaeL94ZzM'
