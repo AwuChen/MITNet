@@ -1560,6 +1560,10 @@ const NFCTrigger = ({ addNode }) => {
               return `There are ${count} connections.`;
             } else if (questionLower.includes('craftsman')) {
               return `There are ${count} craftsmen.`;
+            } else if (questionLower.includes('entrepreneur')) {
+              return `There are ${count} entrepreneurs.`;
+            } else if (questionLower.includes('educational institution') || questionLower.includes('institution')) {
+              return `There are ${count} educational institutions.`;
             } else if (questionLower.includes('holder')) {
               return `There are ${count} holder.`;
             } else if (questionLower.includes('affiliate')) {
@@ -1698,7 +1702,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the entrepreneurs from USC..."
+        placeholder="Show me all the entrepreneurs connected to USC..."
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
