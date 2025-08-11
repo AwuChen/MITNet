@@ -893,7 +893,7 @@ class CypherViz extends React.Component {
         { 
           user: capitalizedNewUser, 
           nfcUser: capitalizeWords(nfcUserName), 
-          awuUser: "Awu Chen" 
+          awuUser: "USC Greif Center" 
         }
         );
       
