@@ -886,14 +886,11 @@ class CypherViz extends React.Component {
                        nfc.location = '', 
                        nfc.website = ''
 
-         MERGE (awu:User {name: $awuUser}) 
-
          MERGE (u)-[:CONNECTED_TO]->(nfc) 
-        MERGE (nfc)-[:CONNECTED_TO]->(awu)`,
+        `,
         { 
           user: capitalizedNewUser, 
-          nfcUser: capitalizeWords(nfcUserName), 
-          awuUser: "USC Greif Center" 
+          nfcUser: capitalizeWords(nfcUserName)
         }
         );
       
@@ -1730,7 +1727,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the entrepreneurs connected to USC... or search by email..."
+        placeholder="Show me all the entrepreneurs connected to USC..."
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
