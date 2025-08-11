@@ -31,6 +31,7 @@ class CypherViz extends React.Component {
       processingMutation: false,
       lastUserActivity: Date.now(),
       isUserActive: true,
+      nfcNodeForAutoPopup: null, // For auto-popup form on NFC tap
 
     };
 
@@ -902,7 +903,7 @@ class CypherViz extends React.Component {
       // Trigger a single loadData call to reload the graph with the new node
       await this.loadData(capitalizedNewUser, this.defaultQuery);
       
-      // Wait for the state to be updated, then focus
+      // Wait for the state to be updated, then focus and auto-popup form
       let checkCount = 0;
       const waitForStateUpdate = () => {
         const nodeExists = this.state.data.nodes.find(n => n.name === capitalizedNewUser);
@@ -912,6 +913,13 @@ class CypherViz extends React.Component {
           this.focusOnNewNode(capitalizedNewUser, this.state.data);
           this.pendingNFCNode = null;
           this.isNFCOperation = false;
+          
+          // Auto-popup the form for the new NFC node
+          // We'll trigger this by setting the node as selected and edited
+          // This will be handled in the GraphView component
+          this.setState({ 
+            nfcNodeForAutoPopup: capitalizedNewUser 
+          });
         } else {
           setTimeout(waitForStateUpdate, 500);
         }
@@ -983,6 +991,11 @@ class CypherViz extends React.Component {
     }
   };
 
+  // Callback to clear NFC popup trigger
+  onNfcPopupTriggered = () => {
+    this.setState({ nfcNodeForAutoPopup: null });
+  };
+
   render() {
     return (
       <Router>
@@ -1003,6 +1016,8 @@ class CypherViz extends React.Component {
         isUserActive={this.state.isUserActive}
         scaleTransitionStart={this.scaleTransitionStart}
         scaleTransitionDuration={this.scaleTransitionDuration}
+        nfcNodeForAutoPopup={this.state.nfcNodeForAutoPopup}
+        onNfcPopupTriggered={this.onNfcPopupTriggered}
     />
   } />
   </Routes>
@@ -1042,7 +1057,7 @@ const NFCTrigger = ({ addNode }) => {
         return <div style={{ textAlign: "center", padding: "20px", fontSize: "16px", color: "red" }}>Adding you to {username}'s network...</div>
       };
 
-              const GraphView = ({ data, handleChange, loadData, fgRef, latestNode, pollingFocusNode, driver, processingMutation, updateUserActivity, isUserActive, scaleTransitionStart, scaleTransitionDuration }) => {
+              const GraphView = ({ data, handleChange, loadData, fgRef, latestNode, pollingFocusNode, driver, processingMutation, updateUserActivity, isUserActive, scaleTransitionStart, scaleTransitionDuration, nfcNodeForAutoPopup, onNfcPopupTriggered }) => {
         const [inputValue, setInputValue] = useState(""); 
         const [selectedNode, setSelectedNode] = useState(null);
         const [editedNode, setEditedNode] = useState(null);
@@ -1059,6 +1074,28 @@ const NFCTrigger = ({ addNode }) => {
             setLastAction('latestNode');
           }
         }, [latestNode]);
+
+        // Auto-popup form for NFC nodes
+        useEffect(() => {
+          if (nfcNodeForAutoPopup && data.nodes.length > 0) {
+            // Find the NFC node in the data
+            const nfcNode = data.nodes.find(node => node.name === nfcNodeForAutoPopup);
+            if (nfcNode) {
+              // Set the node as selected and edited to trigger the form popup
+              setSelectedNode(nfcNode);
+              setEditedNode({ ...nfcNode });
+              setFocusNode(nfcNode.name);
+              setClickedNode(nfcNode.name);
+              setLastAction('latestNode');
+              
+              // Clear the nfcNodeForAutoPopup after triggering the popup
+              // We'll need to pass a callback to clear this state
+              if (typeof onNfcPopupTriggered === 'function') {
+                onNfcPopupTriggered();
+              }
+            }
+          }
+        }, [nfcNodeForAutoPopup, data.nodes]);
 
         // Initial zoom when graph first loads
         useEffect(() => {
@@ -1502,10 +1539,10 @@ const NFCTrigger = ({ addNode }) => {
           };
 
           // Ensure the website has "https://" if missing
-          // let formattedWebsite = editedNode.website.trim();
-          // if (formattedWebsite && !formattedWebsite.startsWith("http://") && !formattedWebsite.startsWith("https://")) {
-          //   formattedWebsite = "https://" + formattedWebsite;
-          // }
+          let formattedWebsite = editedNode.website.trim();
+          if (formattedWebsite && !formattedWebsite.startsWith("http://") && !formattedWebsite.startsWith("https://")) {
+            formattedWebsite = "https://" + formattedWebsite;
+          }
 
           const session = driver.session();
           try {
@@ -1929,10 +1966,10 @@ return (
       <input 
       name="website" 
       value={editedNode.website} 
-      placeholder="Enter email" 
+      placeholder="Enter website" 
       onChange={handleEditChange}
       onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter email"} 
+      onBlur={(e) => e.target.placeholder = "Enter website"} 
       /></p>
 
       <p><button onClick={saveNodeChanges}>Save</button></p>
@@ -1943,7 +1980,7 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       <p><strong>Role:</strong> {selectedNode?.role}</p>
       <p><strong>Location:</strong> {selectedNode?.location}</p>
-      <p><strong>Email:</strong>{" "}
+      <p><strong>Website:</strong>{" "}
       {selectedNode.website && selectedNode.website !== "" ? (
         <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
