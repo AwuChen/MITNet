@@ -1502,10 +1502,10 @@ const NFCTrigger = ({ addNode }) => {
           };
 
           // Ensure the website has "https://" if missing
-          let formattedWebsite = editedNode.website.trim();
-          if (formattedWebsite && !formattedWebsite.startsWith("http://") && !formattedWebsite.startsWith("https://")) {
-            formattedWebsite = "https://" + formattedWebsite;
-          }
+          // let formattedWebsite = editedNode.website.trim();
+          // if (formattedWebsite && !formattedWebsite.startsWith("http://") && !formattedWebsite.startsWith("https://")) {
+          //   formattedWebsite = "https://" + formattedWebsite;
+          // }
 
           const session = driver.session();
           try {
@@ -1929,10 +1929,10 @@ return (
       <input 
       name="website" 
       value={editedNode.website} 
-      placeholder="Enter website" 
+      placeholder="Enter email" 
       onChange={handleEditChange}
       onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter website"} 
+      onBlur={(e) => e.target.placeholder = "Enter email"} 
       /></p>
 
       <p><button onClick={saveNodeChanges}>Save</button></p>
@@ -1943,7 +1943,7 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       <p><strong>Role:</strong> {selectedNode?.role}</p>
       <p><strong>Location:</strong> {selectedNode?.location}</p>
-      <p><strong>Website:</strong>{" "}
+      <p><strong>Email:</strong>{" "}
       {selectedNode.website && selectedNode.website !== "" ? (
         <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
