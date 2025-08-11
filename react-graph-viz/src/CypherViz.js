@@ -1538,23 +1538,14 @@ const NFCTrigger = ({ addNode }) => {
             return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
           };
 
-          // Ensure the website has "https://" if missing
-          let formattedWebsite = editedNode.website.trim();
-          /* if (formattedWebsite && !formattedWebsite.startsWith("http://") && !formattedWebsite.startsWith("https://")) {
-            formattedWebsite = "https://" + formattedWebsite;
-          } */
-
           const session = driver.session();
           try {
             await session.run(
               `MATCH (u:User {name: $oldName}) 
-              SET u.name = $newName, u.role = $role, u.location = $location, u.website = $website`,
+              SET u.name = $newName`,
               {
                 oldName: selectedNode.name,
                 newName: capitalizeWords(editedNode.name),
-                role: capitalizeWords(editedNode.role),
-                location: capitalizeWords(editedNode.location),
-                website: formattedWebsite, // Use the corrected website
               }
             );
             await loadData(editedNode.name); // Keep the edited node as latestNode
@@ -1739,7 +1730,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the entrepreneurs connected to USC..."
+        placeholder="Show me all the entrepreneurs connected to USC... or search by email..."
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
@@ -1931,7 +1922,7 @@ return (
     >
     {selectedNode.name === latestNode ? (
       <>
-      <h3>Edit Network Info</h3>
+      <h3>Network Info</h3>
       <p><strong>Name:</strong>
       <input 
       name="name" 
@@ -1940,36 +1931,6 @@ return (
       onChange={handleEditChange}
       onFocus={(e) => e.target.placeholder = ""}
       onBlur={(e) => e.target.placeholder = "Enter name"} 
-      /></p>
-
-      <p><strong>Role:</strong>
-      <input 
-      name="role" 
-      value={editedNode.role} 
-      placeholder="Enter role" 
-      onChange={handleEditChange}
-      onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter role"} 
-      /></p>
-
-      <p><strong>Location:</strong>
-      <input 
-      name="location" 
-      value={editedNode.location} 
-      placeholder="Enter location" 
-      onChange={handleEditChange}
-      onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter location"} 
-      /></p>
-
-      <p><strong>Email:</strong>
-      <input 
-      name="website" 
-      value={editedNode.website} 
-      placeholder="Enter email" 
-      onChange={handleEditChange}
-      onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter email"} 
       /></p>
 
       <p><button onClick={saveNodeChanges}>Save</button></p>
@@ -1982,7 +1943,7 @@ return (
       <p><strong>Location:</strong> {selectedNode?.location}</p>
       <p><strong>Email:</strong>{" "}
       {selectedNode.website && selectedNode.website !== "" ? (
-        <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
+        <a href={`mailto:${selectedNode.website}`}>
         {selectedNode.website.length > 30 
           ? `${selectedNode.website.substring(0, 30)}...`
         : selectedNode.website}
