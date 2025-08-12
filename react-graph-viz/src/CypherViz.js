@@ -1158,6 +1158,7 @@ const NFCTrigger = ({ addNode }) => {
         const [relationshipData, setRelationshipData] = useState({}); // Store relationship data
         const [showNfcRelationshipPopup, setShowNfcRelationshipPopup] = useState(false);
         const [currentNfcConnection, setCurrentNfcConnection] = useState(null); // For NFC relationship note popup
+        const [hoveredLink, setHoveredLink] = useState(null); // For link hover effects
 
         // Detect when latestNode changes (NFC addition) and set lastAction
         useEffect(() => {
@@ -1648,6 +1649,42 @@ const NFCTrigger = ({ addNode }) => {
               });
               
               console.log(`Relationship data: ${sourceName} -> ${targetName}, Note: ${note}`);
+            }
+          } catch (error) {
+            console.error("Error fetching relationship data:", error);
+          } finally {
+            session.close();
+          }
+        };
+
+        const handleLinkHover = async (link) => {
+          if (!link) {
+            setHoveredLink(null);
+            return;
+          }
+          
+          const sourceName = typeof link.source === 'object' ? link.source.name : link.source;
+          const targetName = typeof link.target === 'object' ? link.target.name : link.target;
+          
+          const session = driver.session();
+          try {
+            // Get relationship data including notes
+            const relationshipResult = await session.run(
+              `MATCH (source:User {name: $sourceName})-[r:CONNECTED_TO]->(target:User {name: $targetName})
+               RETURN r.note as note, source.name as sourceName, target.name as targetName`,
+              { sourceName: sourceName, targetName: targetName }
+            );
+            
+            if (relationshipResult.records.length > 0) {
+              const record = relationshipResult.records[0];
+              const note = record.get('note');
+              
+              setHoveredLink({
+                link: link,
+                sourceName: sourceName,
+                targetName: targetName,
+                note: note
+              });
             }
           } catch (error) {
             console.error("Error fetching relationship data:", error);
@@ -2279,10 +2316,19 @@ return (
   ref={fgRef}
   graphData={data}
   nodeId="name"
-  nodeLabel={(node) => node.location || "No Location"}
+  nodeLabel={(node) => node.role || "No Role"}
+  linkLabel={(link) => {
+    if (hoveredLink && hoveredLink.link === link) {
+      return hoveredLink.note || "No note added";
+    }
+    return null;
+  }}
+
   onNodeClick={handleNodeClick}
   onNodeHover={handleNodeHover}
   onLinkClick={handleLinkClick}
+  onLinkHover={handleLinkHover}
+
   onBackgroundClick={() => {
     setFocusNode(null);
     setClickedNode(null);
@@ -2366,7 +2412,10 @@ return (
     // Reset shadow for text
     ctx.shadowBlur = 0;
     ctx.fillStyle = "gray";
-    ctx.fillText(node.role, node.x + 10, node.y);
+    
+    // Extract first name from full name
+    const firstName = node.name.split(' ')[0];
+    ctx.fillText(firstName, node.x + 10, node.y);
 
     ctx.globalAlpha = 1.0; // Reset alpha for next node
   }}
@@ -2374,6 +2423,14 @@ return (
     const sourceName = typeof link.source === 'object' ? link.source.name : link.source;
     const targetName = typeof link.target === 'object' ? link.target.name : link.target;
     const isConnected = visibilityNodes.has(sourceName) && visibilityNodes.has(targetName);
+    
+    // Check if this link is being hovered
+    const isHovered = hoveredLink && hoveredLink.link === link;
+    
+    if (isHovered) {
+      return '#000'; // Black when hovered
+    }
+    
     return isConnected ? '#999' : '#ccc';
   }}
   linkOpacity={(link) => {
@@ -2382,6 +2439,7 @@ return (
     const isConnected = visibilityNodes.has(sourceName) && visibilityNodes.has(targetName);
     return isConnected ? 1.0 : 0.15;
   }}
+
   linkCurvature={0.2}
   linkDirectionalArrowRelPos={1}
   linkDirectionalArrowLength={5}
@@ -2542,6 +2600,9 @@ return (
 
     </div>
   )}
+
+
+
   </div>
   );
     };
