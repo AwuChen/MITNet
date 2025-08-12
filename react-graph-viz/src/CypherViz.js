@@ -962,7 +962,7 @@ class CypherViz extends React.Component {
                        u.website = ''
 
          MERGE (nfc:User {name: $nfcUser}) 
-         ON CREATE SET nfc.role = 'Holder', 
+         ON CREATE SET nfc.role = '', 
                        nfc.location = '', 
                        nfc.website = ''
 
@@ -972,7 +972,7 @@ class CypherViz extends React.Component {
           user: capitalizedNewUser, 
           nfcUser: capitalizedNfcUser
         }
-      );
+        );
       
       // Store the node name for focusing after mutation completes
       this.pendingNFCNode = nodeToFocus;
@@ -1150,7 +1150,8 @@ const NFCTrigger = ({ addNode }) => {
         const [analyticalAnswer, setAnalyticalAnswer] = useState(null); // For displaying analytical answers
         const [showAnalyticalModal, setShowAnalyticalModal] = useState(false); // For showing/hiding the answer modal
         const [relationshipNote, setRelationshipNote] = useState(""); // For relationship notes when connecting to existing nodes
-        const [nfcNameInput, setNfcNameInput] = useState(""); // For initial NFC name input
+        const [nfcNameInput, setNfcNameInput] = useState("");
+        const [nfcRoleInput, setNfcRoleInput] = useState(""); // For initial NFC name input
         const [showNfcNamePopup, setShowNfcNamePopup] = useState(false); // For showing NFC name input popup
         const [showProfilePopup, setShowProfilePopup] = useState(false); // For showing profile completion popup
         const [pendingNfcName, setPendingNfcName] = useState(""); // Store the name that was entered
@@ -1785,9 +1786,9 @@ const NFCTrigger = ({ addNode }) => {
               setSelectedNode(null); // Close the panel
             } else {
               // No existing node with the new name, just update the current node
-              await session.run(
-                `MATCH (u:User {name: $oldName}) 
-                SET u.name = $newName`,
+            await session.run(
+              `MATCH (u:User {name: $oldName}) 
+              SET u.name = $newName`,
                 {
                   oldName: oldName,
                   newName: newName,
@@ -1980,6 +1981,8 @@ const NFCTrigger = ({ addNode }) => {
               }
               
               setShowNfcNamePopup(false);
+              setNfcNameInput("");
+              setNfcRoleInput("");
               setSelectedNode(existingNode);
               setRelationshipNote("");
               setShowNfcRelationshipPopup(true); // Show NFC relationship note popup
@@ -1994,9 +1997,11 @@ const NFCTrigger = ({ addNode }) => {
               // Node doesn't exist - show profile completion popup
               console.log(`Node "${capitalizedName}" doesn't exist, showing profile completion popup`);
               setShowNfcNamePopup(false);
+              setNfcNameInput("");
+              setNfcRoleInput("");
               setShowProfilePopup(true);
-              setSelectedNode({ name: capitalizedName, role: "", location: "", website: "" });
-              setEditedNode({ name: capitalizedName, role: "", location: "", website: "" });
+              setSelectedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "" });
+              setEditedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "" });
             }
           } catch (error) {
             console.error("Error checking for existing node:", error);
@@ -2100,8 +2105,8 @@ const NFCTrigger = ({ addNode }) => {
               return `There are ${count} educational institutions.`;
             } else if (questionLower.includes('holder')) {
               return `There are ${count} holder.`;
-            } else if (questionLower.includes('affiliate')) {
-              return `There are ${count} affiliates.`;
+            } else if (questionLower.includes('program')) {
+              return `There are ${count} program.`;
             } else {
               return `The count is ${count}.`;
             }
@@ -2316,7 +2321,7 @@ return (
   ref={fgRef}
   graphData={data}
   nodeId="name"
-  nodeLabel={(node) => node.role || "No Role"}
+  nodeLabel={(node) => node.role || "No Program Specified"}
   linkLabel={(link) => {
     if (hoveredLink && hoveredLink.link === link) {
       return hoveredLink.note || "No note added";
@@ -2451,7 +2456,7 @@ return (
       style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3>What's your name?</h3>
+      <h3>Enter Info</h3>
       <p><strong>Name:</strong>
       <input 
         value={nfcNameInput} 
@@ -2465,8 +2470,25 @@ return (
         }}
       /></p>
 
+      <p><strong>Program:</strong>
+      <input 
+        value={nfcRoleInput} 
+        onChange={(e) => setNfcRoleInput(e.target.value)}
+        placeholder="e.g., MSSE, MBA, BS, MS, PhD" 
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+        onKeyPress={(e) => {
+          if (e.key === 'Enter') {
+            handleNfcNameSubmit();
+          }
+        }}
+      /></p>
+
       <p><button onClick={handleNfcNameSubmit} style={{ marginRight: "10px", padding: "8px 16px" }}>Continue</button>
-      <button onClick={() => setShowNfcNamePopup(false)} style={{ padding: "8px 16px" }}>Cancel</button></p>
+      <button onClick={() => {
+        setShowNfcNamePopup(false);
+        setNfcNameInput("");
+        setNfcRoleInput("");
+      }} style={{ padding: "8px 16px" }}>Cancel</button></p>
     </div>
   )}
 
@@ -2479,18 +2501,18 @@ return (
       <h3>Complete Your Profile</h3>
       <p><strong>Name:</strong>
       <input 
-        name="name" 
-        value={editedNode.name} 
+      name="name" 
+      value={editedNode.name} 
         placeholder="Enter your name" 
-        onChange={handleEditChange}
+      onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
 
-      <p><strong>Role:</strong>
+      <p><strong>Program:</strong>
       <input 
         name="role" 
         value={editedNode.role || ""} 
-        placeholder="e.g., Software Engineer, Student" 
+        placeholder="e.g., MSSE, MBA, BS, MS, PhD" 
         onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
@@ -2526,13 +2548,13 @@ return (
     >
       <h3>Network Info</h3>
       <p><strong>Name:</strong> {selectedNode?.name}</p>
-      {selectedNode?.role && <p><strong>Role:</strong> {selectedNode.role}</p>}
+      {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Contact:</strong>{" "}
         <a href={`mailto:${selectedNode.website}`}>
-          {selectedNode.website.length > 30 
-            ? `${selectedNode.website.substring(0, 30)}...`
-          : selectedNode.website}
+        {selectedNode.website.length > 30 
+          ? `${selectedNode.website.substring(0, 30)}...`
+        : selectedNode.website}
         </a>
       </p>}
       
@@ -2547,8 +2569,8 @@ return (
       onClick={(e) => e.stopPropagation()}
     >
       <h3>Add Connection Note</h3>
-      <p><strong>Name:</strong> {selectedNode?.name}</p>
-      {selectedNode?.role && <p><strong>Role:</strong> {selectedNode.role}</p>}
+      <p><strong>Connected to:</strong> {selectedNode?.name}</p>
+      {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Contact:</strong>{" "}
         <a href={`mailto:${selectedNode.website}`}>
