@@ -1492,7 +1492,7 @@ const NFCTrigger = ({ addNode }) => {
     const addAndRedirect = async () => {
       // Generate a unique identifier for the person tapping the NFC tag
       // This could be based on device info, session, or a random ID
-      const newUser = `Visitor-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newUser = `User-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       console.log(`NFC Trigger: Starting NFC operation for ${username} with visitor ${newUser}`);
 
       try {
