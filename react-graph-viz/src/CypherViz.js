@@ -3,6 +3,7 @@ import { HashRouter as Router, Route, Routes, useLocation, useParams } from 'rea
 import './App.css';
 import ForceGraph2D from 'react-force-graph-2d';
 import * as d3 from 'd3';
+import migrateTimestamps from './migrateTimestamps';
 
 class CypherViz extends React.Component {
   constructor({ driver }) {
@@ -32,7 +33,9 @@ class CypherViz extends React.Component {
       lastUserActivity: Date.now(),
       isUserActive: true,
       nfcNodeForAutoPopup: null, // For auto-popup form on NFC tap
-
+      timelineMode: false, // Timeline mode toggle
+      timelineDate: null, // Current timeline date
+      timelineData: null, // Timeline-specific data
     };
 
     // Store the default query for polling (separate from user input)
@@ -258,6 +261,138 @@ class CypherViz extends React.Component {
     }
   };
 
+  // Add timestamps to mutation queries automatically
+  addTimestampsToMutationQuery = (query) => {
+    if (!query || typeof query !== 'string') return query;
+    
+    const trimmedQuery = query.trim();
+    const timestamp = Date.now();
+    
+    // Check if this is a mutation query
+    const isMutationQuery = /(CREATE|MERGE|SET|DELETE|REMOVE|DETACH DELETE)/i.test(trimmedQuery);
+    if (!isMutationQuery) return query;
+    
+    // Skip processing if this is an NFC operation to prevent duplicate timestamps
+    if (this.isNFCOperation) {
+      console.log('Skipping timestamp processing for NFC operation');
+      return query;
+    }
+    
+    console.log(`Processing mutation query with timestamps: ${query}`);
+    
+    let processedQuery = query;
+    
+    // Add timestamps to CREATE User operations
+    processedQuery = processedQuery.replace(
+      /CREATE\s*\(([^:]+):User\s*\{([^}]*)\}\)/gi,
+      (match, alias, properties) => {
+        // Remove existing createdAt if present
+        const cleanProperties = properties.replace(/createdAt\s*:\s*[^,}]+/g, '');
+        // Add timestamp - handle trailing comma and closing brace properly
+        let newProperties = cleanProperties.trim();
+        if (newProperties.endsWith(',')) {
+          newProperties = newProperties.slice(0, -1); // Remove trailing comma
+        }
+        newProperties = `${newProperties}, createdAt: ${timestamp}`;
+        
+        // Extract name property for MERGE matching
+        const nameMatch = properties.match(/name\s*:\s*['"]([^'"]+)['"]/);
+        if (nameMatch) {
+          const name = nameMatch[1];
+          // Use MERGE with name only, then set other properties on CREATE
+          return `MERGE (${alias}:User {name: '${name}'}) ON CREATE SET ${alias}.createdAt = ${timestamp}`;
+        }
+        
+        return `CREATE (${alias}:User {${newProperties}})`;
+      }
+    );
+    
+    // Add timestamps to MERGE User operations with ON CREATE
+    processedQuery = processedQuery.replace(
+      /MERGE\s*\(([^:]+):User\s*\{([^}]*)\}\)\s*ON CREATE SET\s*([^}]*)/gi,
+      (match, alias, properties, setClause) => {
+        // Add createdAt to ON CREATE SET if not present
+        if (!setClause.includes('createdAt')) {
+          let newSetClause = setClause.trim();
+          if (newSetClause.endsWith(',')) {
+            newSetClause = newSetClause.slice(0, -1); // Remove trailing comma
+          }
+          newSetClause = `${newSetClause}, ${alias}.createdAt = ${timestamp}`;
+          return `MERGE (${alias}:User {${properties}}) ON CREATE SET ${newSetClause}`;
+        }
+        return match;
+      }
+    );
+    
+    // Add timestamps to relationship creation (various patterns)
+    // Pattern 1: CREATE (a)-[:CONNECTED_TO]->(b)
+    processedQuery = processedQuery.replace(
+      /CREATE\s*\(([^)]+)\)-\[:CONNECTED_TO\]->\(([^)]+)\)/gi,
+      (match, source, target) => {
+        return `CREATE (${source})-[r:CONNECTED_TO]->(${target}) SET r.createdAt = ${timestamp}`;
+      }
+    );
+    
+    // Pattern 2: CREATE (a)-[r:CONNECTED_TO]->(b)
+    processedQuery = processedQuery.replace(
+      /CREATE\s*\(([^)]+)\)-\[([^:]+):CONNECTED_TO\]->\(([^)]+)\)/gi,
+      (match, source, alias, target) => {
+        return `CREATE (${source})-[${alias}:CONNECTED_TO]->(${target}) SET ${alias}.createdAt = ${timestamp}`;
+      }
+    );
+    
+    // Pattern 3: MERGE (a)-[:CONNECTED_TO]->(b) ON CREATE SET
+    processedQuery = processedQuery.replace(
+      /MERGE\s*\(([^)]+)\)-\[:CONNECTED_TO\]->\(([^)]+)\)\s*ON CREATE SET\s*([^}]*)/gi,
+      (match, source, target, setClause) => {
+        if (!setClause.includes('createdAt')) {
+          let newSetClause = setClause.trim();
+          if (newSetClause.endsWith(',')) {
+            newSetClause = newSetClause.slice(0, -1); // Remove trailing comma
+          }
+          newSetClause = `${newSetClause}, r.createdAt = ${timestamp}`;
+          return `MERGE (${source})-[r:CONNECTED_TO]->(${target}) ON CREATE SET ${newSetClause}`;
+        }
+        return match;
+      }
+    );
+    
+    // Pattern 4: MERGE (a)-[r:CONNECTED_TO]->(b) ON CREATE SET
+    processedQuery = processedQuery.replace(
+      /MERGE\s*\(([^)]+)\)-\[([^:]+):CONNECTED_TO\]->\(([^)]+)\)\s*ON CREATE SET\s*([^}]*)/gi,
+      (match, source, alias, target, setClause) => {
+        if (!setClause.includes('createdAt')) {
+          let newSetClause = setClause.trim();
+          if (newSetClause.endsWith(',')) {
+            newSetClause = newSetClause.slice(0, -1); // Remove trailing comma
+          }
+          newSetClause = `${newSetClause}, ${alias}.createdAt = ${timestamp}`;
+          return `MERGE (${source})-[${alias}:CONNECTED_TO]->(${target}) ON CREATE SET ${newSetClause}`;
+        }
+        return match;
+      }
+    );
+    
+    // Pattern 5: MERGE (a)-[:CONNECTED_TO]->(b) (without ON CREATE)
+    processedQuery = processedQuery.replace(
+      /MERGE\s*\(([^)]+)\)-\[:CONNECTED_TO\]->\(([^)]+)\)/gi,
+      (match, source, target) => {
+        return `MERGE (${source})-[r:CONNECTED_TO]->(${target}) ON CREATE SET r.createdAt = ${timestamp}`;
+      }
+    );
+    
+    // Pattern 6: MERGE (a)-[r:CONNECTED_TO]->(b) (without ON CREATE)
+    processedQuery = processedQuery.replace(
+      /MERGE\s*\(([^)]+)\)-\[([^:]+):CONNECTED_TO\]->\(([^)]+)\)(?!\s*ON CREATE)/gi,
+      (match, source, alias, target) => {
+        return `MERGE (${source})-[${alias}:CONNECTED_TO]->(${target}) ON CREATE SET ${alias}.createdAt = ${timestamp}`;
+      }
+    );
+    
+    console.log(`Processed mutation query with timestamps: ${processedQuery}`);
+    return processedQuery;
+  };
+
   loadData = async (newNodeName = null, queryOverride = null) => {
 
     let session = this.driver.session({ database: "neo4j" });
@@ -314,8 +449,13 @@ class CypherViz extends React.Component {
     }
     
     try {
+      // Preprocess mutation queries to add timestamps
+      let processedQuery = queryToExecute;
+      if (isMutationQuery && !this.isNFCOperation) {
+        processedQuery = this.addTimestampsToMutationQuery(queryToExecute);
+      }
   
-              res = await session.run(queryToExecute);
+      res = await session.run(processedQuery);
       
               // Handle mutations for ALL queries (not just custom ones)
         if (isMutationQuery) {
@@ -803,6 +943,9 @@ class CypherViz extends React.Component {
     // Validate and clean the query state first
     this.validateAndCleanQuery();
     
+    // Run timestamp migration for existing data
+    migrateTimestamps(this.driver);
+    
     this.loadData();
     
     // Start polling (WebSocket is disabled)
@@ -876,6 +1019,9 @@ class CypherViz extends React.Component {
 
     let session = this.driver.session({ database: "neo4j" });
     try {
+      // Create a single timestamp for the entire operation
+      const timestamp = Date.now();
+      
       // First, check if a node with the same name as the new user already exists
       const checkExistingUser = await session.run(
         `MATCH (u:User {name: $user}) RETURN u.name as name`,
@@ -941,38 +1087,46 @@ class CypherViz extends React.Component {
           
           // Create a single node with the best properties
           await session.run(
-            `CREATE (u:User {name: $user, role: $role, location: $location, website: $website})`,
+            `CREATE (u:User {name: $user, role: $role, location: $location, website: $website, createdAt: $createdAt})`,
             { 
               user: capitalizedNewUser,
               role: bestRole,
               location: bestLocation,
-              website: bestWebsite
+              website: bestWebsite,
+              createdAt: timestamp
             }
           );
           
-          console.log(`Merged duplicate nodes for "${capitalizedNewUser}" with properties:`, { bestRole, bestLocation, bestWebsite });
+          console.log(`Merged duplicate nodes for "${capitalizedNewUser}" with properties:`, { bestRole, bestLocation, bestWebsite, timestamp });
         }
       }
 
       // Create or connect the nodes
+      // Use the same timestamp for consistency across all operations
       await session.run(
         `MERGE (u:User {name: $user}) 
          ON CREATE SET u.role = '', 
                        u.location = '', 
-                       u.website = ''
+                       u.website = '',
+                       u.createdAt = $timestamp
 
          MERGE (nfc:User {name: $nfcUser}) 
          ON CREATE SET nfc.role = '', 
                        nfc.location = '', 
-                       nfc.website = ''
+                       nfc.website = '',
+                       nfc.createdAt = $timestamp
 
-         MERGE (u)-[:CONNECTED_TO]->(nfc) 
+         MERGE (u)-[r:CONNECTED_TO]->(nfc) 
+         ON CREATE SET r.createdAt = $timestamp
         `,
         { 
           user: capitalizedNewUser, 
-          nfcUser: capitalizedNfcUser
+          nfcUser: capitalizedNfcUser,
+          timestamp: timestamp
         }
         );
+      
+      console.log(`Created/connected nodes with timestamp: ${timestamp} for ${capitalizedNewUser} -> ${capitalizedNfcUser}`);
       
       // Store the node name for focusing after mutation completes
       this.pendingNFCNode = nodeToFocus;
@@ -990,6 +1144,9 @@ class CypherViz extends React.Component {
           this.focusOnNewNode(nodeToFocus, this.state.data);
           this.pendingNFCNode = null;
           this.isNFCOperation = false;
+          
+          // Refresh timeline stats if in timeline mode
+          this.refreshTimelineStats();
           
           // Auto-popup the form for the NFC node (whether new or existing)
           this.setState({ 
@@ -1076,6 +1233,209 @@ class CypherViz extends React.Component {
     this.setState({ nfcNodeForAutoPopup: null });
   };
 
+  // Timeline methods
+  toggleTimelineMode = async () => {
+    if (!this.state.timelineMode) {
+      // Entering timeline mode - get timeline stats
+      const stats = await this.getTimelineStats();
+      
+      // Ensure we have valid stats
+      const validStats = stats || {
+        earliest: new Date(Date.now() - 86400000), // 24 hours ago
+        latest: new Date()
+      };
+      
+      this.setState(prevState => ({
+        timelineMode: true,
+        timelineDate: validStats.latest,
+        timelineData: prevState.data,
+        timelineStats: validStats
+      }));
+    } else {
+      // Exiting timeline mode
+      this.setState({
+        timelineMode: false,
+        timelineDate: null,
+        timelineData: null,
+        timelineStats: null
+      });
+    }
+  };
+
+  loadTimelineData = async (date) => {
+    if (!this.driver) return;
+
+    const session = this.driver.session();
+    try {
+      const timestamp = date.getTime();
+      
+
+      
+      // Query for nodes and relationships that existed at the given timestamp
+      const result = await session.run(
+        `MATCH (u:User)
+         WHERE u.createdAt IS NOT NULL AND u.createdAt <= $timestamp
+         OPTIONAL MATCH (u)-[r:CONNECTED_TO]->(v:User)
+         WHERE v.createdAt IS NOT NULL AND v.createdAt <= $timestamp
+         AND r.createdAt IS NOT NULL AND r.createdAt <= $timestamp
+         RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
+                v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite`,
+        { timestamp }
+      );
+
+      const nodes = new Set();
+      const links = [];
+
+      result.records.forEach(record => {
+        const source = record.get('source');
+        const target = record.get('target');
+        const sourceRole = record.get('sourceRole');
+        const targetRole = record.get('targetRole');
+        const sourceLocation = record.get('sourceLocation');
+        const targetLocation = record.get('targetLocation');
+        const sourceWebsite = record.get('sourceWebsite');
+        const targetWebsite = record.get('targetWebsite');
+
+        // Always add the source node
+        nodes.add(source);
+        
+        // Add target node and link only if there's a relationship
+        if (target) {
+          nodes.add(target);
+          links.push({
+            source,
+            target,
+            sourceRole,
+            targetRole,
+            sourceLocation,
+            targetLocation,
+            sourceWebsite,
+            targetWebsite
+          });
+        }
+      });
+
+      const timelineData = {
+        nodes: Array.from(nodes).map(name => ({ name })),
+        links
+      };
+
+
+
+      this.setState({
+        timelineData,
+        timelineDate: date
+      });
+
+    } catch (error) {
+      console.error('Error loading timeline data:', error);
+    } finally {
+      session.close();
+    }
+  };
+
+  updateTimelineDate = (date) => {
+    this.loadTimelineData(date);
+  };
+
+  getTimelineStats = async () => {
+    if (!this.driver) return null;
+
+    const session = this.driver.session();
+    try {
+      // Get the earliest and latest timestamps, prioritizing relationships for start time
+      const result = await session.run(
+        `MATCH ()-[r:CONNECTED_TO]->()
+         WHERE r.createdAt IS NOT NULL
+         RETURN min(r.createdAt) as earliest, max(r.createdAt) as latest`
+      );
+
+      if (result.records.length > 0) {
+        const record = result.records[0];
+        const earliest = record.get('earliest');
+        const latest = record.get('latest');
+        
+
+        
+        // Helper function to validate and convert timestamp
+        const convertTimestamp = (timestamp) => {
+          if (!timestamp) return null;
+          
+          // Convert to number if it's a string
+          let numTimestamp = Number(timestamp);
+          
+          // Check if it's a valid timestamp (between 1970 and 2100)
+          const minValid = new Date('1970-01-01').getTime();
+          const maxValid = new Date('2100-01-01').getTime();
+          
+          // Try as milliseconds first
+          if (numTimestamp >= minValid && numTimestamp <= maxValid) {
+            return new Date(numTimestamp);
+          }
+          
+          // Try as seconds (multiply by 1000)
+          const secondsTimestamp = numTimestamp * 1000;
+          if (secondsTimestamp >= minValid && secondsTimestamp <= maxValid) {
+            return new Date(secondsTimestamp);
+          }
+          
+          // If it's not a valid timestamp, return null
+          return null;
+        };
+        
+        const earliestDate = convertTimestamp(earliest);
+        const latestDate = convertTimestamp(latest);
+        
+        const stats = {
+          earliest: earliestDate || new Date(Date.now() - 86400000), // Default to 24 hours ago
+          latest: latestDate || new Date()
+        };
+        
+        return stats;
+      }
+    } catch (error) {
+      console.error('Error getting timeline stats:', error);
+    } finally {
+      session.close();
+    }
+    return null;
+  };
+
+  resetToCurrentTime = () => {
+    this.setState({
+      timelineMode: false,
+      timelineDate: null,
+      timelineData: null
+    });
+  };
+
+  // Refresh timeline stats when new nodes are added
+  refreshTimelineStats = async () => {
+    if (this.state.timelineMode) {
+      const stats = await this.getTimelineStats();
+      
+      // Ensure timeline date stays within valid range
+      let newTimelineDate = this.state.timelineDate;
+      if (stats && this.state.timelineDate) {
+        if (this.state.timelineDate.getTime() > stats.latest.getTime()) {
+          newTimelineDate = stats.latest;
+        } else if (this.state.timelineDate.getTime() < stats.earliest.getTime()) {
+          newTimelineDate = stats.earliest;
+        }
+      }
+      
+      this.setState({ 
+        timelineStats: stats,
+        timelineDate: newTimelineDate
+      });
+      
+      // Reload timeline data if date changed
+      if (newTimelineDate && newTimelineDate.getTime() !== this.state.timelineDate?.getTime()) {
+        this.loadTimelineData(newTimelineDate);
+      }
+    }
+  };
+
   render() {
     return (
       <Router>
@@ -1098,6 +1458,14 @@ class CypherViz extends React.Component {
         scaleTransitionDuration={this.scaleTransitionDuration}
         nfcNodeForAutoPopup={this.state.nfcNodeForAutoPopup}
         onNfcPopupTriggered={this.onNfcPopupTriggered}
+        timelineMode={this.state.timelineMode}
+        timelineDate={this.state.timelineDate}
+        timelineData={this.state.timelineData}
+        timelineStats={this.state.timelineStats}
+        toggleTimelineMode={this.toggleTimelineMode}
+        loadTimelineData={this.loadTimelineData}
+        updateTimelineDate={this.updateTimelineDate}
+        resetToCurrentTime={this.resetToCurrentTime}
     />
   } />
   </Routes>
@@ -1139,7 +1507,7 @@ const NFCTrigger = ({ addNode }) => {
         return <div style={{ textAlign: "center", padding: "20px", fontSize: "16px", color: "red" }}>Adding you to {username}'s network...</div>
       };
 
-              const GraphView = ({ data, handleChange, loadData, fgRef, latestNode, pollingFocusNode, driver, processingMutation, updateUserActivity, isUserActive, scaleTransitionStart, scaleTransitionDuration, nfcNodeForAutoPopup, onNfcPopupTriggered }) => {
+              const GraphView = ({ data, handleChange, loadData, fgRef, latestNode, pollingFocusNode, driver, processingMutation, updateUserActivity, isUserActive, scaleTransitionStart, scaleTransitionDuration, nfcNodeForAutoPopup, onNfcPopupTriggered, timelineMode, timelineDate, timelineData, timelineStats, toggleTimelineMode, loadTimelineData, updateTimelineDate, resetToCurrentTime }) => {
         const [inputValue, setInputValue] = useState(""); 
         const [selectedNode, setSelectedNode] = useState(null);
         const [editedNode, setEditedNode] = useState(null);
@@ -1751,20 +2119,22 @@ const NFCTrigger = ({ addNode }) => {
                  // Create outgoing relationships (avoiding self-connections and duplicates)
                  FOREACH (other IN outgoing |
                    FOREACH (x IN CASE WHEN other.name <> $newName AND NOT EXISTS((existing)-[:CONNECTED_TO]->(other)) THEN [1] ELSE [] END |
-                     CREATE (existing)-[:CONNECTED_TO]->(other)
+                     CREATE (existing)-[r:CONNECTED_TO]->(other)
+                     SET r.createdAt = $timestamp
                    )
                  )
                  
                  // Create incoming relationships (avoiding self-connections and duplicates)
                  FOREACH (other IN incoming |
                    FOREACH (x IN CASE WHEN other.name <> $newName AND NOT EXISTS((other)-[:CONNECTED_TO]->(existing)) THEN [1] ELSE [] END |
-                     CREATE (other)-[:CONNECTED_TO]->(existing)
+                     CREATE (other)-[r:CONNECTED_TO]->(existing)
+                     SET r.createdAt = $timestamp
                    )
                  )
                  
                  // Delete the old node
                  DETACH DELETE old`,
-                { oldName: oldName, newName: newName }
+                { oldName: oldName, newName: newName, timestamp: Date.now() }
               );
               
               // Update the existing node with merged properties
@@ -1962,8 +2332,9 @@ const NFCTrigger = ({ addNode }) => {
                   // No existing connection, create one
                   await session.run(
                     `MATCH (existing:User {name: $existingName}), (holder:User {name: $holderName})
-                     CREATE (existing)-[:CONNECTED_TO]->(holder)`,
-                    { existingName: capitalizedName, holderName: nfcHolderName }
+                     CREATE (existing)-[r:CONNECTED_TO]->(holder)
+                     SET r.createdAt = $timestamp`,
+                    { existingName: capitalizedName, holderName: nfcHolderName, timestamp: Date.now() }
                   );
                   console.log(`Created new connection from "${capitalizedName}" to "${nfcHolderName}"`);
                 } else {
@@ -2254,8 +2625,155 @@ return (
       />
       <button id="visualize" onClick={() => window.open("https://awuchen.github.io/greif-network-3d/", "_blank")}>Visualize3D</button>
       <button id="info" onClick={() => window.open("https://www.hako.soooul.xyz/drafts/washi", "_blank")}>Info</button>
+      <button 
+        id="timeline" 
+        onClick={toggleTimelineMode}
+      >
+        {timelineMode ? 'Exit Timeline' : 'Timeline'}
+      </button>
       
+      {/* Timeline Controls */}
+      {timelineMode && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          minWidth: '400px',
+          textAlign: 'center'
+        }}>
+          <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>Network Timeline</h4>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+            <button
+              onClick={() => {
+                if (timelineDate) {
+                  const newDate = new Date(timelineDate.getTime() - 60000); // -1 minute
+                  updateTimelineDate(newDate);
+                }
+              }}
+              style={{
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '10px'
+              }}
+            >
+              -1m
+            </button>
+            <input
+              type="range"
+              min={timelineStats?.earliest?.getTime() || Date.now() - 86400000} // Default to 24 hours ago if no earliest
+              max={timelineStats?.latest?.getTime() || Date.now()}
+              value={timelineDate?.getTime() || Date.now()}
+              step={60000} // 1 minute steps (60,000 milliseconds)
+              onChange={(e) => {
+                const timestamp = parseInt(e.target.value);
+                const date = new Date(timestamp);
+                updateTimelineDate(date);
+              }}
+              style={{ flex: 1 }}
+            />
+            <button
+              onClick={() => {
+                if (timelineDate) {
+                  const newDate = new Date(timelineDate.getTime() + 60000); // +1 minute
+                  updateTimelineDate(newDate);
+                }
+              }}
+              style={{
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '10px'
+              }}
+            >
+              +1m
+            </button>
+            <span style={{ fontSize: '12px', color: '#666', minWidth: '120px' }}>
+              {timelineDate ? `${timelineDate.toLocaleDateString()} ${timelineDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Current Time'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '10px' }}>
+            <button
+              onClick={() => {
+                if (timelineDate) {
+                  const newDate = new Date(timelineDate.getTime() - 300000); // -5 minutes
+                  updateTimelineDate(newDate);
+                }
+              }}
+              style={{
+                backgroundColor: '#4CAF50',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '10px'
+              }}
+            >
+              -5m
+            </button>
 
+            <button
+              onClick={() => loadTimelineData(new Date())}
+              style={{
+                backgroundColor: '#9C27B0',
+                color: 'white',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Load Current
+            </button>
+            <button
+              onClick={() => {
+                if (timelineDate) {
+                  const newDate = new Date(timelineDate.getTime() + 300000); // +5 minutes
+                  updateTimelineDate(newDate);
+                }
+              }}
+              style={{
+                backgroundColor: '#4CAF50',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '10px'
+              }}
+            >
+              +5m
+            </button>
+          </div>
+          {timelineData && (
+            <div style={{ fontSize: '11px', color: '#666', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Nodes: {timelineData.nodes.length}</span>
+              <span>Connections: {timelineData.links.length}</span>
+              <span>Time: {timelineDate?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
+            </div>
+          )}
+          {timelineStats && (
+            <div style={{ fontSize: '10px', color: '#999', marginTop: '8px', textAlign: 'center' }}>
+              Timeline: {timelineStats.earliest?.toLocaleDateString()} {timelineStats.earliest?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+              to {timelineStats.latest?.toLocaleDateString()} {timelineStats.latest?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            </div>
+          )}
+        </div>
+      )}
       
       {/* Mutation processing indicator */}
       {processingMutation && (
@@ -2319,7 +2837,7 @@ return (
 
   <ForceGraph2D
   ref={fgRef}
-  graphData={data}
+  graphData={timelineMode && timelineData ? timelineData : data}
   nodeId="name"
   nodeLabel={(node) => node.role || "No Program Specified"}
   linkLabel={(link) => {
@@ -2628,10 +3146,6 @@ return (
   </div>
   );
     };
-
-
-
-
 
     export default CypherViz;
 
