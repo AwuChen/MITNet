@@ -1156,7 +1156,8 @@ const NFCTrigger = ({ addNode }) => {
         const [pendingNfcName, setPendingNfcName] = useState(""); // Store the name that was entered
         const [selectedLink, setSelectedLink] = useState(null); // For selected relationship/link
         const [relationshipData, setRelationshipData] = useState({}); // Store relationship data
-        const [showNfcRelationshipPopup, setShowNfcRelationshipPopup] = useState(false); // For NFC relationship note popup
+        const [showNfcRelationshipPopup, setShowNfcRelationshipPopup] = useState(false);
+        const [currentNfcConnection, setCurrentNfcConnection] = useState(null); // For NFC relationship note popup
 
         // Detect when latestNode changes (NFC addition) and set lastAction
         useEffect(() => {
@@ -1807,22 +1808,25 @@ const NFCTrigger = ({ addNode }) => {
             let sourceName, targetName;
             
             if (showNfcRelationshipPopup) {
-              // This is an NFC operation - we need to find the connection
-              // For new users, the connection is from the updated visitor node to the NFC holder
-              // For existing users, the connection is from the existing node to the NFC holder
-              
-              // First, let's find all connections involving the selectedNode (NFC holder)
-              const connectionResult = await session.run(
-                `MATCH (source:User)-[r:CONNECTED_TO]->(target:User {name: $holderName})
-                 RETURN source.name as sourceName, target.name as targetName`,
-                { holderName: selectedNode.name }
-              );
-              
-              if (connectionResult.records.length > 0) {
-                // For NFC operations, we want the most recent connection (likely the visitor)
-                const record = connectionResult.records[0];
-                sourceName = record.get('sourceName');
-                targetName = record.get('targetName');
+              // This is an NFC operation - use the tracked connection
+              if (currentNfcConnection) {
+                sourceName = currentNfcConnection.source;
+                targetName = currentNfcConnection.target;
+              } else {
+                // Fallback: try to find the connection
+                const fallbackResult = await session.run(
+                  `MATCH (source:User)-[r:CONNECTED_TO]->(target:User {name: $holderName})
+                   RETURN source.name as sourceName, target.name as targetName
+                   ORDER BY source.name DESC
+                   LIMIT 1`,
+                  { holderName: selectedNode.name }
+                );
+                
+                if (fallbackResult.records.length > 0) {
+                  const record = fallbackResult.records[0];
+                  sourceName = record.get('sourceName');
+                  targetName = record.get('targetName');
+                }
               }
             } else {
               // This is a regular relationship note - use the existing logic
@@ -1862,6 +1866,7 @@ const NFCTrigger = ({ addNode }) => {
             setRelationshipNote(""); // Clear the note
             setPendingNfcName(""); // Clear pending name
             setShowNfcRelationshipPopup(false); // Close NFC relationship popup
+            setCurrentNfcConnection(null); // Clear the tracked connection
           } catch (error) {
             console.error("Error saving relationship note:", error);
           } finally {
@@ -1905,6 +1910,12 @@ const NFCTrigger = ({ addNode }) => {
               const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
               
               if (nfcHolderName) {
+                // Store the connection details for the relationship note
+                setCurrentNfcConnection({
+                  source: capitalizedName,
+                  target: nfcHolderName
+                });
+                
                 // Check if the existing node is already connected to the NFC holder
                 const existingConnectionCheck = await session.run(
                   `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User {name: $holderName})
@@ -1991,6 +2002,12 @@ const NFCTrigger = ({ addNode }) => {
             const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
             
             if (nfcHolderName) {
+              // Store the connection details for the relationship note
+              setCurrentNfcConnection({
+                source: editedNode.name,
+                target: nfcHolderName
+              });
+              
               // Show connection note popup for the new user
               setSelectedNode({ name: nfcHolderName, role: "", location: "", website: "" });
               setRelationshipNote("");
@@ -2000,6 +2017,7 @@ const NFCTrigger = ({ addNode }) => {
               setSelectedNode(null);
               setEditedNode(null);
               setPendingNfcName("");
+              setCurrentNfcConnection(null);
             }
             
             // Reload data to show the updated node
