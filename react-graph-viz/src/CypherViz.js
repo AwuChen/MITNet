@@ -1156,6 +1156,7 @@ const NFCTrigger = ({ addNode }) => {
         const [pendingNfcName, setPendingNfcName] = useState(""); // Store the name that was entered
         const [selectedLink, setSelectedLink] = useState(null); // For selected relationship/link
         const [relationshipData, setRelationshipData] = useState({}); // Store relationship data
+        const [showNfcRelationshipPopup, setShowNfcRelationshipPopup] = useState(false); // For NFC relationship note popup
 
         // Detect when latestNode changes (NFC addition) and set lastAction
         useEffect(() => {
@@ -1830,6 +1831,7 @@ const NFCTrigger = ({ addNode }) => {
             setSelectedNode(null); // Close the panel
             setRelationshipNote(""); // Clear the note
             setPendingNfcName(""); // Clear pending name
+            setShowNfcRelationshipPopup(false); // Close NFC relationship popup
           } catch (error) {
             console.error("Error saving relationship note:", error);
           } finally {
@@ -1905,6 +1907,7 @@ const NFCTrigger = ({ addNode }) => {
               setShowNfcNamePopup(false);
               setSelectedNode(existingNode);
               setRelationshipNote("");
+              setShowNfcRelationshipPopup(true); // Show NFC relationship note popup
               
               // Don't reload data to avoid triggering duplicate cleanup again
               // Just focus on the existing node
@@ -2394,14 +2397,14 @@ return (
     </div>
   )}
 
-  {/* Connection Note Popup (for existing nodes) */}
-  {selectedNode && !showProfilePopup && !showNfcNamePopup && (
+  {/* Regular Node Info Popup (for clicking on any node) */}
+  {selectedNode && !showProfilePopup && !showNfcNamePopup && !showNfcRelationshipPopup && (
     <div 
       style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3>Add Connection Note</h3>
-      <p><strong>Connected to:</strong> {selectedNode?.name}</p>
+      <h3>Network Info</h3>
+      <p><strong>Name:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Role:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Contact:</strong>{" "}
@@ -2412,7 +2415,29 @@ return (
         </a>
       </p>}
       
-      <p><strong>How did you meet?</strong>
+
+    </div>
+  )}
+
+  {/* NFC Relationship Note Popup (only during NFC flow) */}
+  {showNfcRelationshipPopup && selectedNode && (
+    <div 
+      style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h3>Add Connection Note</h3>
+      <p><strong>Name:</strong> {selectedNode?.name}</p>
+      {selectedNode?.role && <p><strong>Role:</strong> {selectedNode.role}</p>}
+      {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
+      {selectedNode?.website && <p><strong>Contact:</strong>{" "}
+        <a href={`mailto:${selectedNode.website}`}>
+          {selectedNode.website.length > 30 
+            ? `${selectedNode.website.substring(0, 30)}...`
+          : selectedNode.website}
+        </a>
+      </p>}
+      
+      <p><strong>Note:</strong>
       <textarea 
         value={relationshipNote} 
         onChange={(e) => setRelationshipNote(e.target.value)}
@@ -2420,8 +2445,7 @@ return (
         style={{ width: "100%", marginTop: "5px", padding: "5px", minHeight: "80px", resize: "vertical" }}
       /></p>
 
-      <p><button onClick={saveRelationshipNote} style={{ marginRight: "10px", padding: "8px 16px" }}>Save Note</button>
-      <button onClick={() => setSelectedNode(null)} style={{ padding: "8px 16px" }}>Cancel</button></p>
+      <p><button onClick={saveRelationshipNote} style={{ padding: "8px 16px" }}>Save</button></p>
     </div>
   )}
 
@@ -2437,7 +2461,7 @@ return (
       
       {relationshipData.note ? (
         <>
-          <p><strong>How they met:</strong></p>
+          <p><strong>Note:</strong></p>
           <div style={{ 
             backgroundColor: "#f5f5f5", 
             padding: "10px", 
@@ -2449,15 +2473,10 @@ return (
           </div>
         </>
       ) : (
-        <p style={{ color: "#666", fontStyle: "italic" }}>No connection note added yet.</p>
+        <p style={{ color: "#666", fontStyle: "italic" }}>No note added yet.</p>
       )}
       
-      <p style={{ marginTop: "15px" }}>
-        <button onClick={() => {
-          setSelectedLink(null);
-          setRelationshipData({});
-        }} style={{ padding: "8px 16px" }}>Close</button>
-      </p>
+
     </div>
   )}
   </div>
