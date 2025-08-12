@@ -1702,34 +1702,31 @@ const NFCTrigger = ({ addNode }) => {
               const mergedLocation = existingNode.location && existingNode.location !== '' ? existingNode.location : editedNode.location;
               const mergedWebsite = existingNode.website && existingNode.website !== '' ? existingNode.website : editedNode.website;
               
-              // Get all relationships from the old node before deleting it
-              const oldNodeRelationships = await session.run(
-                `MATCH (old:User {name: $oldName})-[r:CONNECTED_TO]->(other)
-                 RETURN other.name as otherName
-                 UNION
-                 MATCH (other)-[r:CONNECTED_TO]->(old:User {name: $oldName})
-                 RETURN other.name as otherName`,
-                { oldName: oldName }
-              );
-              
-              // Create relationships from existing node to all connected nodes
-              for (const record of oldNodeRelationships.records) {
-                const otherName = record.get('otherName');
-                if (otherName !== newName) { // Don't create self-connections
-                  await session.run(
-                    `MATCH (existing:User {name: $existingName}), (other:User {name: $otherName})
-                     WHERE NOT EXISTS((existing)-[:CONNECTED_TO]->(other))
-                     CREATE (existing)-[:CONNECTED_TO]->(other)`,
-                    { existingName: newName, otherName: otherName }
-                  );
-                }
-              }
-              
-              // Delete the old node (this will automatically remove its relationships)
+              // Efficiently merge all relationships and delete old node in a single operation
               await session.run(
                 `MATCH (old:User {name: $oldName})
+                 OPTIONAL MATCH (old)-[r1:CONNECTED_TO]->(other1)
+                 OPTIONAL MATCH (other2)-[r2:CONNECTED_TO]->(old)
+                 WITH old, collect(DISTINCT other1) as outgoing, collect(DISTINCT other2) as incoming
+                 MATCH (existing:User {name: $newName})
+                 
+                 // Create outgoing relationships (avoiding self-connections and duplicates)
+                 FOREACH (other IN outgoing |
+                   FOREACH (x IN CASE WHEN other.name <> $newName AND NOT EXISTS((existing)-[:CONNECTED_TO]->(other)) THEN [1] ELSE [] END |
+                     CREATE (existing)-[:CONNECTED_TO]->(other)
+                   )
+                 )
+                 
+                 // Create incoming relationships (avoiding self-connections and duplicates)
+                 FOREACH (other IN incoming |
+                   FOREACH (x IN CASE WHEN other.name <> $newName AND NOT EXISTS((other)-[:CONNECTED_TO]->(existing)) THEN [1] ELSE [] END |
+                     CREATE (other)-[:CONNECTED_TO]->(existing)
+                   )
+                 )
+                 
+                 // Delete the old node
                  DETACH DELETE old`,
-                { oldName: oldName }
+                { oldName: oldName, newName: newName }
               );
               
               // Update the existing node with merged properties
