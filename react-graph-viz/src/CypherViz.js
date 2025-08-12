@@ -448,6 +448,13 @@ class CypherViz extends React.Component {
       return;
     }
     
+    // Block DELETE operations for user safety
+    const isDeleteQuery = /(DELETE|DETACH DELETE|REMOVE)/i.test(queryToExecute.trim());
+    if (isDeleteQuery) {
+      alert('DELETE operations are not allowed for safety reasons. Please use other operations like CREATE, MERGE, or SET.');
+      return;
+    }
+    
     try {
       // Preprocess mutation queries to add timestamps
       let processedQuery = queryToExecute;
