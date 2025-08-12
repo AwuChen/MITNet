@@ -864,6 +864,7 @@ class CypherViz extends React.Component {
     };
 
     const capitalizedNewUser = capitalizeWords(newUser);
+    const capitalizedNfcUser = capitalizeWords(nfcUserName);
 
     // Set NFC operation flag to prevent double reload
     this.isNFCOperation = true;
@@ -875,9 +876,88 @@ class CypherViz extends React.Component {
 
     let session = this.driver.session({ database: "neo4j" });
     try {
+      // First, check if a node with the same name as the new user already exists
+      const checkExistingUser = await session.run(
+        `MATCH (u:User {name: $user}) RETURN u.name as name`,
+        { user: capitalizedNewUser }
+      );
+
+      let nodeToFocus = capitalizedNewUser;
+      let isExistingNode = false;
+
+      if (checkExistingUser.records.length > 0) {
+        // Node with this name already exists, use the existing node
+        console.log(`Node with name "${capitalizedNewUser}" already exists, using existing node`);
+        isExistingNode = true;
+        nodeToFocus = capitalizedNewUser;
+      } else {
+        // Node doesn't exist, create a new one
+        console.log(`Creating new node with name "${capitalizedNewUser}"`);
+      }
+
+      // Only run duplicate cleanup for new nodes, not for existing nodes being merged
+      if (!this.isNFCOperation || !this.pendingNFCNode) {
+        // First, check if there are multiple nodes with the same name and merge them
+        const duplicateCheck = await session.run(
+          `MATCH (u:User {name: $user})
+           RETURN count(u) as count`,
+          { user: capitalizedNewUser }
+        );
+        
+        const duplicateCount = duplicateCheck.records[0].get('count').toNumber();
+        
+        if (duplicateCount > 1) {
+          console.log(`Found ${duplicateCount} duplicate nodes for "${capitalizedNewUser}", merging them...`);
+          
+          // Get all nodes with this name and their properties
+          const allNodes = await session.run(
+            `MATCH (u:User {name: $user})
+             RETURN u.role as role, u.location as location, u.website as website
+             ORDER BY u.role DESC, u.location DESC, u.website DESC`,
+            { user: capitalizedNewUser }
+          );
+          
+          // Find the best properties (non-empty values)
+          let bestRole = '';
+          let bestLocation = '';
+          let bestWebsite = '';
+          
+          allNodes.records.forEach(record => {
+            const role = record.get('role');
+            const location = record.get('location');
+            const website = record.get('website');
+            
+            if (role && role !== '') bestRole = role;
+            if (location && location !== '') bestLocation = location;
+            if (website && website !== '') bestWebsite = website;
+          });
+          
+          // Delete all nodes with this name and recreate with best properties
+          await session.run(
+            `MATCH (u:User {name: $user})
+             DETACH DELETE u`,
+            { user: capitalizedNewUser }
+          );
+          
+          // Create a single node with the best properties
+          await session.run(
+            `CREATE (u:User {name: $user, role: $role, location: $location, website: $website})`,
+            { 
+              user: capitalizedNewUser,
+              role: bestRole,
+              location: bestLocation,
+              website: bestWebsite
+            }
+          );
+          
+          console.log(`Merged duplicate nodes for "${capitalizedNewUser}" with properties:`, { bestRole, bestLocation, bestWebsite });
+        }
+      }
+
+      // Create or connect the nodes
       await session.run(
         `MERGE (u:User {name: $user}) 
-         ON CREATE SET u.role = 'Affiliate', 
+         ON CREATE SET u.role = '', 
                        u.location = '', 
                        u.website = ''
 
@@ -890,44 +970,47 @@ class CypherViz extends React.Component {
         `,
         { 
           user: capitalizedNewUser, 
-          nfcUser: capitalizeWords(nfcUserName)
+          nfcUser: capitalizedNfcUser
         }
-        );
+      );
       
-      // Store the new user name for focusing after mutation completes
-      this.pendingNFCNode = capitalizedNewUser;
+      // Store the node name for focusing after mutation completes
+      this.pendingNFCNode = nodeToFocus;
       
-      // Trigger a single loadData call to reload the graph with the new node
-      await this.loadData(capitalizedNewUser, this.defaultQuery);
+      // Trigger a single loadData call to reload the graph with the node
+      await this.loadData(nodeToFocus, this.defaultQuery);
       
       // Wait for the state to be updated, then focus and auto-popup form
       let checkCount = 0;
       const waitForStateUpdate = () => {
-        const nodeExists = this.state.data.nodes.find(n => n.name === capitalizedNewUser);
+        const nodeExists = this.state.data.nodes.find(n => n.name === nodeToFocus);
         checkCount++;
         
         if (nodeExists) {
-          this.focusOnNewNode(capitalizedNewUser, this.state.data);
+          this.focusOnNewNode(nodeToFocus, this.state.data);
           this.pendingNFCNode = null;
           this.isNFCOperation = false;
           
-          // Auto-popup the form for the new NFC node
-          // We'll trigger this by setting the node as selected and edited
-          // This will be handled in the GraphView component
+          // Auto-popup the form for the NFC node (whether new or existing)
           this.setState({ 
-            nfcNodeForAutoPopup: capitalizedNewUser 
+            nfcNodeForAutoPopup: nodeToFocus 
           });
-        } else {
+        } else if (checkCount < 10) { // Limit retries to prevent infinite loops
           setTimeout(waitForStateUpdate, 500);
+        } else {
+          console.error("Failed to find node in state after multiple attempts");
+          this.pendingNFCNode = null;
+          this.isNFCOperation = false;
         }
       };
       
       // Start checking for state update after a short delay
       setTimeout(waitForStateUpdate, 1000);
       
-      // Old focusing logic removed - replaced with state-aware focusing above
     } catch (error) {
       console.error("Error adding user:", error);
+      this.pendingNFCNode = null;
+      this.isNFCOperation = false;
     } finally {
       session.close();
     }
@@ -1032,11 +1115,13 @@ const NFCTrigger = ({ addNode }) => {
 
   React.useEffect(() => {
     const addAndRedirect = async () => {
-      const newUser = `User-${Date.now()}`;
-      console.log(`NFC Trigger: Starting NFC operation for ${username} with new user ${newUser}`);
+      // Generate a unique identifier for the person tapping the NFC tag
+      // This could be based on device info, session, or a random ID
+      const newUser = `Visitor-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`NFC Trigger: Starting NFC operation for ${username} with visitor ${newUser}`);
 
       try {
-        await addNode(newUser, username); // pass dynamic user
+        await addNode(newUser, username); // newUser = visitor, username = NFC tag owner
         console.log(`NFC Trigger: addNode completed successfully`);
         } catch (error) {
           console.error("NFC Trigger: Error adding user:", error);
@@ -1064,6 +1149,13 @@ const NFCTrigger = ({ addNode }) => {
         const [mutatedNodes, setMutatedNodes] = useState([]); // Track nodes created/modified by mutation queries
         const [analyticalAnswer, setAnalyticalAnswer] = useState(null); // For displaying analytical answers
         const [showAnalyticalModal, setShowAnalyticalModal] = useState(false); // For showing/hiding the answer modal
+        const [relationshipNote, setRelationshipNote] = useState(""); // For relationship notes when connecting to existing nodes
+        const [nfcNameInput, setNfcNameInput] = useState(""); // For initial NFC name input
+        const [showNfcNamePopup, setShowNfcNamePopup] = useState(false); // For showing NFC name input popup
+        const [showProfilePopup, setShowProfilePopup] = useState(false); // For showing profile completion popup
+        const [pendingNfcName, setPendingNfcName] = useState(""); // Store the name that was entered
+        const [selectedLink, setSelectedLink] = useState(null); // For selected relationship/link
+        const [relationshipData, setRelationshipData] = useState({}); // Store relationship data
 
         // Detect when latestNode changes (NFC addition) and set lastAction
         useEffect(() => {
@@ -1078,15 +1170,14 @@ const NFCTrigger = ({ addNode }) => {
             // Find the NFC node in the data
             const nfcNode = data.nodes.find(node => node.name === nfcNodeForAutoPopup);
             if (nfcNode) {
-              // Set the node as selected and edited to trigger the form popup
-              setSelectedNode(nfcNode);
-              setEditedNode({ ...nfcNode });
+              // Show the initial name input popup for NFC nodes
+              setShowNfcNamePopup(true);
+              setNfcNameInput("");
               setFocusNode(nfcNode.name);
               setClickedNode(nfcNode.name);
               setLastAction('latestNode');
               
               // Clear the nfcNodeForAutoPopup after triggering the popup
-              // We'll need to pass a callback to clear this state
               if (typeof onNfcPopupTriggered === 'function') {
                 onNfcPopupTriggered();
               }
@@ -1495,6 +1586,11 @@ const NFCTrigger = ({ addNode }) => {
             }
         };
 
+        // Helper function to check if a node is new (created via NFC)
+        const isNewNode = (node) => {
+          return node.name === latestNode;
+        };
+
         const handleNodeClick = (node) => {
           if (!node) return;
           setSelectedNode(node);
@@ -1502,6 +1598,9 @@ const NFCTrigger = ({ addNode }) => {
           setFocusNode(node.name);
           setClickedNode(node.name);
           setLastAction('click');
+          
+          // Clear relationship note when clicking a different node
+          setRelationshipNote("");
           
           // Update user activity when clicking nodes
           updateUserActivity();
@@ -1515,6 +1614,43 @@ const NFCTrigger = ({ addNode }) => {
             setFocusNode(node.name);
           } else {
             setFocusNode(null);
+          }
+        };
+
+        const handleLinkClick = async (link) => {
+          if (!link) return;
+          
+          const sourceName = typeof link.source === 'object' ? link.source.name : link.source;
+          const targetName = typeof link.target === 'object' ? link.target.name : link.target;
+          
+          console.log(`Link clicked: ${sourceName} -> ${targetName}`);
+          
+          const session = driver.session();
+          try {
+            // Get relationship data including notes
+            const relationshipResult = await session.run(
+              `MATCH (source:User {name: $sourceName})-[r:CONNECTED_TO]->(target:User {name: $targetName})
+               RETURN r.note as note, source.name as sourceName, target.name as targetName`,
+              { sourceName: sourceName, targetName: targetName }
+            );
+            
+            if (relationshipResult.records.length > 0) {
+              const record = relationshipResult.records[0];
+              const note = record.get('note');
+              
+              setSelectedLink(link);
+              setRelationshipData({
+                sourceName: sourceName,
+                targetName: targetName,
+                note: note
+              });
+              
+              console.log(`Relationship data: ${sourceName} -> ${targetName}, Note: ${note}`);
+            }
+          } catch (error) {
+            console.error("Error fetching relationship data:", error);
+          } finally {
+            session.close();
           }
         };
 
@@ -1535,20 +1671,290 @@ const NFCTrigger = ({ addNode }) => {
             return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
           };
 
+          const newName = capitalizeWords(editedNode.name);
+          const oldName = selectedNode.name;
+
+          // Don't do anything if the name hasn't changed
+          if (newName === oldName) {
+            setSelectedNode(null); // Close the panel
+            return;
+          }
+
+          const session = driver.session();
+          try {
+            // First, check if a node with the new name already exists
+            const existingNodeCheck = await session.run(
+              `MATCH (u:User {name: $newName}) RETURN u`,
+              { newName: newName }
+            );
+
+            if (existingNodeCheck.records.length > 0) {
+              // A node with the new name already exists - merge them
+              console.log(`Node with name "${newName}" already exists, merging with existing node...`);
+              
+              // Get the existing node's properties
+              const existingNode = existingNodeCheck.records[0].get('u').properties;
+              
+              // Merge properties: keep non-empty values from either node
+              const mergedRole = existingNode.role && existingNode.role !== '' ? existingNode.role : editedNode.role;
+              const mergedLocation = existingNode.location && existingNode.location !== '' ? existingNode.location : editedNode.location;
+              const mergedWebsite = existingNode.website && existingNode.website !== '' ? existingNode.website : editedNode.website;
+              
+              // Get all relationships from the old node before deleting it
+              const oldNodeRelationships = await session.run(
+                `MATCH (old:User {name: $oldName})-[r:CONNECTED_TO]->(other)
+                 RETURN other.name as otherName
+                 UNION
+                 MATCH (other)-[r:CONNECTED_TO]->(old:User {name: $oldName})
+                 RETURN other.name as otherName`,
+                { oldName: oldName }
+              );
+              
+              // Create relationships from existing node to all connected nodes
+              for (const record of oldNodeRelationships.records) {
+                const otherName = record.get('otherName');
+                if (otherName !== newName) { // Don't create self-connections
+                  await session.run(
+                    `MATCH (existing:User {name: $existingName}), (other:User {name: $otherName})
+                     WHERE NOT EXISTS((existing)-[:CONNECTED_TO]->(other))
+                     CREATE (existing)-[:CONNECTED_TO]->(other)`,
+                    { existingName: newName, otherName: otherName }
+                  );
+                }
+              }
+              
+              // Delete the old node (this will automatically remove its relationships)
+              await session.run(
+                `MATCH (old:User {name: $oldName})
+                 DETACH DELETE old`,
+                { oldName: oldName }
+              );
+              
+              // Update the existing node with merged properties
+              await session.run(
+                `MATCH (u:User {name: $newName})
+                 SET u.role = $role, u.location = $location, u.website = $website`,
+                {
+                  newName: newName,
+                  role: mergedRole,
+                  location: mergedLocation,
+                  website: mergedWebsite
+                }
+              );
+              
+              console.log(`Successfully merged nodes. New node "${newName}" has properties:`, { mergedRole, mergedLocation, mergedWebsite });
+              
+              // Focus on the merged node
+              await loadData(newName);
+              setSelectedNode(null); // Close the panel
+            } else {
+              // No existing node with the new name, just update the current node
+              await session.run(
+                `MATCH (u:User {name: $oldName}) 
+                SET u.name = $newName`,
+                {
+                  oldName: oldName,
+                  newName: newName,
+                }
+              );
+              await loadData(newName); // Keep the edited node as latestNode
+              setSelectedNode(null); // Close the panel
+            }
+          } catch (error) {
+            console.error("Error updating node:", error);
+          } finally {
+            session.close();
+          }
+        };
+
+        const saveNewNodeProfile = async () => {
+          if (!editedNode || !selectedNode) return;
+
+          // Helper function to capitalize first letter of each word
+          const capitalizeWords = (str) => {
+            if (!str) return str;
+            return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+          };
+
           const session = driver.session();
           try {
             await session.run(
               `MATCH (u:User {name: $oldName}) 
-              SET u.name = $newName`,
+              SET u.name = $newName, u.role = $role, u.location = $location, u.website = $website`,
               {
                 oldName: selectedNode.name,
                 newName: capitalizeWords(editedNode.name),
+                role: editedNode.role || '',
+                location: editedNode.location || '',
+                website: editedNode.website || ''
               }
             );
-            await loadData(editedNode.name); // Keep the edited node as latestNode
+            await loadData(capitalizeWords(editedNode.name));
             setSelectedNode(null); // Close the panel
           } catch (error) {
-            console.error("Error updating node:", error);
+            console.error("Error updating new node profile:", error);
+          } finally {
+            session.close();
+          }
+        };
+
+        const saveRelationshipNote = async () => {
+          if (!selectedNode || !relationshipNote.trim()) return;
+
+          const session = driver.session();
+          try {
+            // Get the NFC holder name from the current connection
+            const nfcHolderResult = await session.run(
+              `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User)
+               RETURN holder.name as holderName`,
+              { existingName: selectedNode.name }
+            );
+            
+            const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
+            
+            if (nfcHolderName) {
+              // Add the relationship note as a property to the connection
+              await session.run(
+                `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User {name: $holderName})
+                 SET r.note = $note`,
+                {
+                  existingName: selectedNode.name,
+                  holderName: nfcHolderName,
+                  note: relationshipNote.trim()
+                }
+              );
+              
+              console.log(`Added relationship note: "${relationshipNote.trim()}" for connection from ${selectedNode.name} to ${nfcHolderName}`);
+            }
+            
+            setSelectedNode(null); // Close the panel
+            setRelationshipNote(""); // Clear the note
+            setPendingNfcName(""); // Clear pending name
+          } catch (error) {
+            console.error("Error saving relationship note:", error);
+          } finally {
+            session.close();
+          }
+        };
+
+        const handleNfcNameSubmit = async () => {
+          if (!nfcNameInput.trim()) return;
+
+          // Helper function to capitalize first letter of each word
+          const capitalizeWords = (str) => {
+            if (!str) return str;
+            return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+          };
+
+          const capitalizedName = capitalizeWords(nfcNameInput.trim());
+          setPendingNfcName(capitalizedName);
+
+          const session = driver.session();
+          try {
+            // Check if a node with this name already exists
+            const existingNodeCheck = await session.run(
+              `MATCH (u:User {name: $name}) RETURN u`,
+              { name: capitalizedName }
+            );
+
+            if (existingNodeCheck.records.length > 0) {
+              // Node exists - merge visitor into existing node and show connection note popup
+              console.log(`Node "${capitalizedName}" exists, merging visitor into existing node`);
+              
+              const existingNode = existingNodeCheck.records[0].get('u').properties;
+              
+              // Get the NFC holder name from the visitor's connection
+              const nfcHolderResult = await session.run(
+                `MATCH (visitor:User {name: $visitorName})-[r:CONNECTED_TO]->(holder:User)
+                 RETURN holder.name as holderName`,
+                { visitorName: latestNode }
+              );
+              
+              const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
+              
+              if (nfcHolderName) {
+                // Check if the existing node is already connected to the NFC holder
+                const existingConnectionCheck = await session.run(
+                  `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User {name: $holderName})
+                   RETURN r`,
+                  { existingName: capitalizedName, holderName: nfcHolderName }
+                );
+                
+                if (existingConnectionCheck.records.length === 0) {
+                  // No existing connection, create one
+                  await session.run(
+                    `MATCH (existing:User {name: $existingName}), (holder:User {name: $holderName})
+                     CREATE (existing)-[:CONNECTED_TO]->(holder)`,
+                    { existingName: capitalizedName, holderName: nfcHolderName }
+                  );
+                  console.log(`Created new connection from "${capitalizedName}" to "${nfcHolderName}"`);
+                } else {
+                  console.log(`Connection from "${capitalizedName}" to "${nfcHolderName}" already exists`);
+                }
+                
+                // Delete the visitor node
+                await session.run(
+                  `MATCH (visitor:User {name: $visitorName})
+                   DETACH DELETE visitor`,
+                  { visitorName: latestNode }
+                );
+                
+                console.log(`Merged visitor into existing node "${capitalizedName}"`);
+              }
+              
+              setShowNfcNamePopup(false);
+              setSelectedNode(existingNode);
+              setRelationshipNote("");
+              
+              // Don't reload data to avoid triggering duplicate cleanup again
+              // Just focus on the existing node
+              console.log(`Merged visitor into existing node "${capitalizedName}", focusing on existing node`);
+              
+              // Update the latestNode to the existing node so it gets focused
+              // We'll let the user manually refresh if needed
+            } else {
+              // Node doesn't exist - show profile completion popup
+              console.log(`Node "${capitalizedName}" doesn't exist, showing profile completion popup`);
+              setShowNfcNamePopup(false);
+              setShowProfilePopup(true);
+              setSelectedNode({ name: capitalizedName, role: "", location: "", website: "" });
+              setEditedNode({ name: capitalizedName, role: "", location: "", website: "" });
+            }
+          } catch (error) {
+            console.error("Error checking for existing node:", error);
+          } finally {
+            session.close();
+          }
+        };
+
+        const saveNewProfileFromNfc = async () => {
+          if (!editedNode || !pendingNfcName) return;
+
+          const session = driver.session();
+          try {
+            // Update the visitor node with the new name and profile information
+            await session.run(
+              `MATCH (visitor:User {name: $visitorName}) 
+               SET visitor.name = $newName, visitor.role = $role, visitor.location = $location, visitor.website = $website`,
+              {
+                visitorName: latestNode,
+                newName: editedNode.name,
+                role: editedNode.role || '',
+                location: editedNode.location || '',
+                website: editedNode.website || ''
+              }
+            );
+            
+            console.log(`Updated visitor profile: ${editedNode.name} with role: ${editedNode.role}, location: ${editedNode.location}, website: ${editedNode.website}`);
+            setShowProfilePopup(false);
+            setSelectedNode(null);
+            setEditedNode(null);
+            setPendingNfcName("");
+            
+            // Reload data to show the updated node
+            await loadData(editedNode.name);
+          } catch (error) {
+            console.error("Error saving new profile from NFC:", error);
           } finally {
             session.close();
           }
@@ -1810,6 +2216,7 @@ return (
   nodeLabel={(node) => node.location || "No Location"}
   onNodeClick={handleNodeClick}
   onNodeHover={handleNodeHover}
+  onLinkClick={handleLinkClick}
   onBackgroundClick={() => {
     setFocusNode(null);
     setClickedNode(null);
@@ -1818,6 +2225,8 @@ return (
     setSelectedNode(null);
     setShowAnalyticalModal(false);
     setAnalyticalAnswer(null);
+    setSelectedLink(null);
+    setRelationshipData({});
   }}
   nodeCanvasObject={(node, ctx) => {
     const isHighlighted =
@@ -1912,44 +2321,143 @@ return (
   linkDirectionalArrowLength={5}
   />
 
-  {selectedNode && editedNode && (
+  {/* NFC Name Input Popup */}
+  {showNfcNamePopup && (
     <div 
-      style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000 }}
+      style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
       onClick={(e) => e.stopPropagation()}
     >
-    {selectedNode.name === latestNode ? (
-      <>
-      <h3>Network Info</h3>
+      <h3>What's your name?</h3>
       <p><strong>Name:</strong>
       <input 
-      name="name" 
-      value={editedNode.name} 
-      placeholder="Enter name" 
-      onChange={handleEditChange}
-      onFocus={(e) => e.target.placeholder = ""}
-      onBlur={(e) => e.target.placeholder = "Enter name"} 
+        value={nfcNameInput} 
+        onChange={(e) => setNfcNameInput(e.target.value)}
+        placeholder="Enter your name" 
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+        onKeyPress={(e) => {
+          if (e.key === 'Enter') {
+            handleNfcNameSubmit();
+          }
+        }}
       /></p>
 
-      <p><button onClick={saveNodeChanges}>Save</button></p>
-      </>
-      ) : (
-      <>
-      <h3>Network Info</h3>
-      <p><strong>Name:</strong> {selectedNode?.name}</p>
-      <p><strong>Role:</strong> {selectedNode?.role}</p>
-      <p><strong>Location:</strong> {selectedNode?.location}</p>
-      <p><strong>Email:</strong>{" "}
-      {selectedNode.website && selectedNode.website !== "" ? (
+      <p><button onClick={handleNfcNameSubmit} style={{ marginRight: "10px", padding: "8px 16px" }}>Continue</button>
+      <button onClick={() => setShowNfcNamePopup(false)} style={{ padding: "8px 16px" }}>Cancel</button></p>
+    </div>
+  )}
+
+  {/* Profile Completion Popup (for new nodes) */}
+  {showProfilePopup && selectedNode && editedNode && (
+    <div 
+      style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h3>Complete Your Profile</h3>
+      <p><strong>Name:</strong>
+      <input 
+        name="name" 
+        value={editedNode.name} 
+        placeholder="Enter your name" 
+        onChange={handleEditChange}
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+      /></p>
+
+      <p><strong>Role:</strong>
+      <input 
+        name="role" 
+        value={editedNode.role || ""} 
+        placeholder="e.g., Software Engineer, Student" 
+        onChange={handleEditChange}
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+      /></p>
+
+      <p><strong>Location:</strong>
+      <input 
+        name="location" 
+        value={editedNode.location || ""} 
+        placeholder="e.g., Los Angeles, CA" 
+        onChange={handleEditChange}
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+      /></p>
+
+      <p><strong>Email/Website:</strong>
+      <input 
+        name="website" 
+        value={editedNode.website || ""} 
+        placeholder="your.email@example.com" 
+        onChange={handleEditChange}
+        style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+      /></p>
+
+      <p><button onClick={saveNewProfileFromNfc} style={{ marginRight: "10px", padding: "8px 16px" }}>Save Profile</button>
+      <button onClick={() => setShowProfilePopup(false)} style={{ padding: "8px 16px" }}>Cancel</button></p>
+    </div>
+  )}
+
+  {/* Connection Note Popup (for existing nodes) */}
+  {selectedNode && !showProfilePopup && !showNfcNamePopup && (
+    <div 
+      style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h3>Add Connection Note</h3>
+      <p><strong>Connected to:</strong> {selectedNode?.name}</p>
+      {selectedNode?.role && <p><strong>Role:</strong> {selectedNode.role}</p>}
+      {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
+      {selectedNode?.website && <p><strong>Contact:</strong>{" "}
         <a href={`mailto:${selectedNode.website}`}>
-        {selectedNode.website.length > 30 
-          ? `${selectedNode.website.substring(0, 30)}...`
-        : selectedNode.website}
+          {selectedNode.website.length > 30 
+            ? `${selectedNode.website.substring(0, 30)}...`
+          : selectedNode.website}
         </a>
-        ) : (
-        ""
-      )}</p>
-      </>
-    )}
+      </p>}
+      
+      <p><strong>How did you meet?</strong>
+      <textarea 
+        value={relationshipNote} 
+        onChange={(e) => setRelationshipNote(e.target.value)}
+        placeholder="e.g., Met at USC networking event, Introduced by mutual friend, Worked together on project..."
+        style={{ width: "100%", marginTop: "5px", padding: "5px", minHeight: "80px", resize: "vertical" }}
+      /></p>
+
+      <p><button onClick={saveRelationshipNote} style={{ marginRight: "10px", padding: "8px 16px" }}>Save Note</button>
+      <button onClick={() => setSelectedNode(null)} style={{ padding: "8px 16px" }}>Cancel</button></p>
+    </div>
+  )}
+
+  {/* Relationship Note Popup */}
+  {selectedLink && relationshipData && (
+    <div 
+      style={{ position: "absolute", top: "30%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000, minWidth: "300px" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h3>Connection Details</h3>
+      <p><strong>From:</strong> {relationshipData.sourceName}</p>
+      <p><strong>To:</strong> {relationshipData.targetName}</p>
+      
+      {relationshipData.note ? (
+        <>
+          <p><strong>How they met:</strong></p>
+          <div style={{ 
+            backgroundColor: "#f5f5f5", 
+            padding: "10px", 
+            borderRadius: "4px", 
+            marginTop: "5px",
+            fontStyle: "italic"
+          }}>
+            "{relationshipData.note}"
+          </div>
+        </>
+      ) : (
+        <p style={{ color: "#666", fontStyle: "italic" }}>No connection note added yet.</p>
+      )}
+      
+      <p style={{ marginTop: "15px" }}>
+        <button onClick={() => {
+          setSelectedLink(null);
+          setRelationshipData({});
+        }} style={{ padding: "8px 16px" }}>Close</button>
+      </p>
     </div>
   )}
   </div>
