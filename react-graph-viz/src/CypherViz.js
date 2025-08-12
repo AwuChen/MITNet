@@ -2241,7 +2241,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the entrepreneurs connected to USC..."
+        placeholder="Show me all the MSEI students from CA"
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
@@ -2252,7 +2252,7 @@ return (
           }
         }}
       />
-      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/GreifNet/", "_blank")}>Visualize3D</button>
+      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/greif-network-3d/", "_blank")}>Visualize3D</button>
       <button id="info" onClick={() => window.open("https://www.hako.soooul.xyz/drafts/washi", "_blank")}>Info</button>
       
 
@@ -2474,7 +2474,7 @@ return (
       <input 
         value={nfcRoleInput} 
         onChange={(e) => setNfcRoleInput(e.target.value)}
-        placeholder="e.g., MSSE, MBA, BS, MS, PhD" 
+        placeholder="e.g., MSEI, MSSE, MSBA, MBA, etc." 
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
         onKeyPress={(e) => {
           if (e.key === 'Enter') {
@@ -2512,7 +2512,7 @@ return (
       <input 
         name="role" 
         value={editedNode.role || ""} 
-        placeholder="e.g., MSSE, MBA, BS, MS, PhD" 
+        placeholder="e.g., MSEI, MBA, BS, MS, PhD" 
         onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
@@ -2550,7 +2550,7 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Contact:</strong>{" "}
+      {selectedNode?.website && <p><strong>Email:</strong>{" "}
         <a href={`mailto:${selectedNode.website}`}>
         {selectedNode.website.length > 30 
           ? `${selectedNode.website.substring(0, 30)}...`
@@ -2572,7 +2572,7 @@ return (
       <p><strong>Connected to:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Contact:</strong>{" "}
+      {selectedNode?.website && <p><strong>Email:</strong>{" "}
         <a href={`mailto:${selectedNode.website}`}>
           {selectedNode.website.length > 30 
             ? `${selectedNode.website.substring(0, 30)}...`
