@@ -1804,28 +1804,58 @@ const NFCTrigger = ({ addNode }) => {
 
           const session = driver.session();
           try {
-            // Get the NFC holder name from the current connection
-            const nfcHolderResult = await session.run(
-              `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User)
-               RETURN holder.name as holderName`,
-              { existingName: selectedNode.name }
-            );
+            let sourceName, targetName;
             
-            const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
+            if (showNfcRelationshipPopup) {
+              // This is an NFC operation - we need to find the connection
+              // For new users, the connection is from the updated visitor node to the NFC holder
+              // For existing users, the connection is from the existing node to the NFC holder
+              
+              // First, let's find all connections involving the selectedNode (NFC holder)
+              const connectionResult = await session.run(
+                `MATCH (source:User)-[r:CONNECTED_TO]->(target:User {name: $holderName})
+                 RETURN source.name as sourceName, target.name as targetName`,
+                { holderName: selectedNode.name }
+              );
+              
+              if (connectionResult.records.length > 0) {
+                // For NFC operations, we want the most recent connection (likely the visitor)
+                const record = connectionResult.records[0];
+                sourceName = record.get('sourceName');
+                targetName = record.get('targetName');
+              }
+            } else {
+              // This is a regular relationship note - use the existing logic
+              const nfcHolderResult = await session.run(
+                `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User)
+                 RETURN holder.name as holderName`,
+                { existingName: selectedNode.name }
+              );
+              
+              const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
+              
+              if (nfcHolderName) {
+                sourceName = selectedNode.name;
+                targetName = nfcHolderName;
+              }
+            }
             
-            if (nfcHolderName) {
+            if (sourceName && targetName) {
               // Add the relationship note as a property to the connection
-              await session.run(
-                `MATCH (existing:User {name: $existingName})-[r:CONNECTED_TO]->(holder:User {name: $holderName})
-                 SET r.note = $note`,
+              const updateResult = await session.run(
+                `MATCH (source:User {name: $sourceName})-[r:CONNECTED_TO]->(target:User {name: $targetName})
+                 SET r.note = $note
+                 RETURN r.note as updatedNote`,
                 {
-                  existingName: selectedNode.name,
-                  holderName: nfcHolderName,
+                  sourceName: sourceName,
+                  targetName: targetName,
                   note: relationshipNote.trim()
                 }
               );
               
-              console.log(`Added relationship note: "${relationshipNote.trim()}" for connection from ${selectedNode.name} to ${nfcHolderName}`);
+              if (updateResult.records.length > 0) {
+                const updatedNote = updateResult.records[0].get('updatedNote');
+              }
             }
             
             setSelectedNode(null); // Close the panel
@@ -1950,9 +1980,27 @@ const NFCTrigger = ({ addNode }) => {
             
             console.log(`Updated visitor profile: ${editedNode.name} with role: ${editedNode.role}, location: ${editedNode.location}, website: ${editedNode.website}`);
             setShowProfilePopup(false);
-            setSelectedNode(null);
-            setEditedNode(null);
-            setPendingNfcName("");
+            
+            // Get the NFC holder name from the visitor's connection
+            const nfcHolderResult = await session.run(
+              `MATCH (visitor:User {name: $visitorName})-[r:CONNECTED_TO]->(holder:User)
+               RETURN holder.name as holderName`,
+              { visitorName: editedNode.name }
+            );
+            
+            const nfcHolderName = nfcHolderResult.records[0]?.get('holderName');
+            
+            if (nfcHolderName) {
+              // Show connection note popup for the new user
+              setSelectedNode({ name: nfcHolderName, role: "", location: "", website: "" });
+              setRelationshipNote("");
+              setShowNfcRelationshipPopup(true);
+            } else {
+              // No NFC holder found, just close the popup
+              setSelectedNode(null);
+              setEditedNode(null);
+              setPendingNfcName("");
+            }
             
             // Reload data to show the updated node
             await loadData(editedNode.name);
