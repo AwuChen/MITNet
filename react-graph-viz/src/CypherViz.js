@@ -1830,9 +1830,21 @@ const NFCTrigger = ({ addNode }) => {
             const data = await response.json();
             const generatedQuery = data.text || data.query || "";
 
+            // Detection for different types of requests
+            const question = inputValue.toLowerCase();
+            
+            // Report request detection
+            const isReportRequest = (() => {
+              const reportKeywords = [
+                'report', 'analysis', 'summary', 'network analysis', 'bridge analysis', 
+                'top connectors', 'network health', 'generate report', 'comprehensive report', 
+                'full analysis', 'network report', 'bridge report', 'connector analysis'
+              ];
+              return reportKeywords.some(keyword => question.includes(keyword));
+            })();
+
             // More specific detection for true analytical questions vs visualization requests
             const isTrueAnalyticalQuestion = (() => {
-              const question = inputValue.toLowerCase();
               const analyticalKeywords = ['how many', 'how much', 'what is', 'what are', 'when', 'where', 'why', 'who', 'which', 'how', 'what'];
               
               // True analytical questions that ask for specific data points
@@ -1878,7 +1890,29 @@ const NFCTrigger = ({ addNode }) => {
               return analyticalKeywords.some(keyword => question.includes(keyword));
             })();
 
-            if (isTrueAnalyticalQuestion) {
+            if (isReportRequest) {
+              // For report requests, execute the query and generate a comprehensive report
+              try {
+                const session = driver.session({ database: "neo4j" });
+                const result = await session.run(generatedQuery);
+                await session.close();
+
+                // Generate a comprehensive network analysis report
+                const report = generateNetworkReport(result, inputValue);
+                
+                // Display the report in a modal or notification
+                displayNetworkReport(report, inputValue);
+                
+                // Clear the input after showing the report
+                setTimeout(() => {
+                  setInputValue("");
+                }, 10000); // Keep report visible longer
+                
+              } catch (queryError) {
+                console.error("Error generating report:", queryError);
+                displayNetworkReport("Sorry, I couldn't generate the report. Please try again.", inputValue);
+              }
+            } else if (isTrueAnalyticalQuestion) {
               // For analytical questions, execute the query and provide a text answer
               try {
                 const session = driver.session({ database: "neo4j" });
@@ -2614,6 +2648,163 @@ const NFCTrigger = ({ addNode }) => {
           }, 8000);
         };
 
+        // Helper function to generate comprehensive network analysis reports
+        const generateNetworkReport = (result, question) => {
+          const records = result.records;
+          
+          if (records.length === 0) {
+            return "No network data found to analyze.";
+          }
+
+          // Parse the network data
+          const connections = [];
+          const users = new Map();
+          const userConnections = new Map();
+
+          records.forEach(record => {
+            const sourceName = record.get('sourceName');
+            const sourceRole = record.get('sourceRole');
+            const sourceLocation = record.get('sourceLocation');
+            const targetName = record.get('targetName');
+            const targetRole = record.get('targetRole');
+            const targetLocation = record.get('targetLocation');
+            const connectionNote = record.get('connectionNote');
+            const connectionTime = record.get('connectionTime');
+
+            // Add users to the map
+            if (sourceName) {
+              users.set(sourceName, {
+                name: sourceName,
+                role: sourceRole,
+                location: sourceLocation
+              });
+            }
+            if (targetName) {
+              users.set(targetName, {
+                name: targetName,
+                role: targetRole,
+                location: targetLocation
+              });
+            }
+
+            // Count connections per user
+            if (sourceName && targetName) {
+              userConnections.set(sourceName, (userConnections.get(sourceName) || 0) + 1);
+              userConnections.set(targetName, (userConnections.get(targetName) || 0) + 1);
+              
+              connections.push({
+                source: sourceName,
+                target: targetName,
+                note: connectionNote,
+                time: connectionTime
+              });
+            }
+          });
+
+          // Find top connectors
+          const topConnectors = Array.from(userConnections.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([name, count]) => ({ name, count }));
+
+          // Analyze demographics
+          const locations = Array.from(users.values()).map(u => u.location).filter(Boolean);
+          const uniqueLocations = [...new Set(locations)];
+          const roles = Array.from(users.values()).map(u => u.role).filter(Boolean);
+          const uniqueRoles = [...new Set(roles)];
+
+          // Generate the report
+          const report = `# 📊 **Network Analysis Report**
+
+## **🎯 Executive Summary**
+- **Total Users**: ${users.size}
+- **Total Connections**: ${connections.length}
+- **Top Connector**: ${topConnectors[0]?.name || 'N/A'} (${topConnectors[0]?.count || 0} connections)
+- **Network Health**: ${connections.length > users.size * 2 ? 'Excellent' : connections.length > users.size ? 'Good' : 'Needs Improvement'}
+
+## **🏆 Top Network Connectors**
+${topConnectors.slice(0, 5).map((connector, index) => 
+  `${index + 1}. **${connector.name}** - ${connector.count} connections`
+).join('\n')}
+
+## **🌍 Demographics & Participation**
+- **Geographic Diversity**: ${uniqueLocations.length} unique locations
+- **Professional Diversity**: ${uniqueRoles.length} unique roles
+- **Participation Rate**: ${Math.round((connections.length / (users.size * (users.size - 1) / 2)) * 100)}% of possible connections
+
+## **📈 Network Statistics**
+| Metric | Value |
+|--------|-------|
+| **Total Users** | ${users.size} |
+| **Total Connections** | ${connections.length} |
+| **Average Connections per User** | ${Math.round(connections.length / users.size * 2)} |
+| **Unique Locations** | ${uniqueLocations.length} |
+| **Unique Roles** | ${uniqueRoles.length} |
+
+## **💡 Key Insights**
+- The network shows ${connections.length > users.size * 2 ? 'strong' : connections.length > users.size ? 'moderate' : 'limited'} connectivity
+- Top connectors demonstrate effective networking skills
+- Geographic and professional diversity enhance network value
+
+## **🎯 Recommendations**
+- Encourage more connections between different communities
+- Support bridge nodes to maintain network resilience
+- Foster cross-cultural and cross-professional connections`;
+
+          return report;
+        };
+
+        // Helper function to display network reports
+        const displayNetworkReport = (report, question) => {
+          // Format the report with better styling
+          const formattedReport = report
+            .replace(/# 📊 \*\*Network Analysis Report\*\*/g, '<h1 style="color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; margin-bottom: 20px;">📊 Network Analysis Report</h1>')
+            .replace(/## \*\*🎯 Executive Summary\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">🎯 Executive Summary</h2>')
+            .replace(/## \*\*🏆 Top Network Connectors\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">🏆 Top Network Connectors</h2>')
+            .replace(/## \*\*🌍 Demographics & Participation\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">🌍 Demographics & Participation</h2>')
+            .replace(/## \*\*📈 Network Statistics\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">📈 Network Statistics</h2>')
+            .replace(/## \*\*💡 Key Insights\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">💡 Key Insights</h2>')
+            .replace(/## \*\*🎯 Recommendations\*\*/g, '<h2 style="color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 5px; margin: 20px 0 15px 0;">🎯 Recommendations</h2>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e74c3c;">$1</strong>')
+            .replace(/- \*\*(.*?)\*\*: (.*?)$/gm, '<li style="margin: 8px 0; padding: 5px 0; border-left: 3px solid #3498db; padding-left: 15px;"><strong style="color: #e74c3c;">$1</strong>: $2</li>')
+            .replace(/(\d+)\. \*\*(.*?)\*\* - (\d+) connections/g, '<li style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #27ae60;"><strong style="color: #e74c3c;">$2</strong> - <span style="color: #27ae60; font-weight: bold;">$3 connections</span></li>')
+            .replace(/\| (.*?) \| (.*?) \|/g, '<tr><td style="padding: 8px; border: 1px solid #ddd; background: #f8f9fa; font-weight: bold;">$1</td><td style="padding: 8px; border: 1px solid #ddd; text-align: center;">$2</td></tr>')
+            .replace(/\|--------\|-------\|/g, '')
+            .replace(/- (.*?)$/gm, '<li style="margin: 5px 0; padding: 3px 0;">$1</li>');
+
+          // Wrap in proper HTML structure
+          const htmlReport = `
+            <div style="
+              max-height: 70vh; 
+              overflow-y: auto; 
+              padding: 20px; 
+              background: white; 
+              border-radius: 8px; 
+              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              line-height: 1.6;
+              color: #2c3e50;
+            ">
+              <div style="margin-bottom: 20px;">
+                ${formattedReport}
+              </div>
+            </div>
+          `;
+
+          setAnalyticalAnswer({ 
+            answer: htmlReport, 
+            question: "Network Analysis Report",
+            isHtml: true 
+          });
+          setShowAnalyticalModal(true);
+          
+          // Auto-hide after 30 seconds for reports (longer since it's more detailed)
+          setTimeout(() => {
+            setShowAnalyticalModal(false);
+            setAnalyticalAnswer(null);
+          }, 30000);
+        };
+
 
 return (
     <div width="95%">
@@ -2812,12 +3003,63 @@ return (
       {/* Analytical Answer Modal */}
       {showAnalyticalModal && analyticalAnswer && (
         <div 
-          style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px", backgroundColor: "white", border: "1px solid black", boxShadow: "0px 0px 10px rgba(0, 0, 0, 0.3)", zIndex: 1000 }}
+          style={{ 
+            position: "absolute", 
+            top: "50%", 
+            left: "50%", 
+            transform: "translate(-50%, -50%)", 
+            width: "80%", 
+            maxWidth: "800px",
+            maxHeight: "80vh",
+            backgroundColor: "white", 
+            border: "2px solid #3498db", 
+            borderRadius: "10px",
+            boxShadow: "0px 0px 20px rgba(0, 0, 0, 0.3)", 
+            zIndex: 1000,
+            overflow: "hidden"
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-          <h3>Network Analysis</h3>
-          <p><strong>Question:</strong> "{analyticalAnswer.question}"</p>
-          <p><strong>Answer:</strong> {analyticalAnswer.answer}</p>
+          <div style={{
+            padding: "15px 20px",
+            backgroundColor: "#3498db",
+            color: "white",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+            <h3 style={{ margin: 0, fontSize: "18px" }}>{analyticalAnswer.question}</h3>
+            <button 
+              onClick={() => {
+                setShowAnalyticalModal(false);
+                setAnalyticalAnswer(null);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "white",
+                fontSize: "20px",
+                cursor: "pointer",
+                padding: "0",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ padding: "0", maxHeight: "calc(80vh - 60px)", overflow: "hidden" }}>
+            {analyticalAnswer.isHtml ? (
+              <div dangerouslySetInnerHTML={{ __html: analyticalAnswer.answer }} />
+            ) : (
+              <div style={{ padding: "20px", maxHeight: "calc(80vh - 60px)", overflowY: "auto" }}>
+                <p><strong>Answer:</strong> {analyticalAnswer.answer}</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
       
