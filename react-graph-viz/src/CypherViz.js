@@ -1828,12 +1828,42 @@ const NFCTrigger = ({ addNode }) => {
             });
 
             const data = await response.json();
-            const generatedQuery = data.text || data.query || "";
+            let generatedQuery = data.text || data.query || "";
+            
+            // Clean up the query by removing markdown code blocks if present
+            generatedQuery = generatedQuery
+              .replace(/```cypher\s*/gi, '')  // Remove opening cypher code block
+              .replace(/```\s*$/gi, '')       // Remove closing code block
+              .replace(/^```\s*/gi, '')       // Remove any opening code block
+              .trim();                        // Remove extra whitespace
 
             // Detection for different types of requests
             const question = inputValue.toLowerCase();
             
-            // Report request detection
+            // Individual node report detection (check this FIRST)
+            const isNodeReportRequest = (() => {
+              const nodeReportPatterns = [
+                /report.*(?:for|about|on)\s+([A-Za-z\s]+)/i,
+                /(?:generate|create|show)\s+(?:a\s+)?report.*(?:for|about|on)\s+([A-Za-z\s]+)/i,
+                /(?:analysis|summary)\s+(?:for|about|on)\s+([A-Za-z\s]+)/i,
+                /([A-Za-z\s]+)\s+(?:report|analysis|summary)/i,
+                /(?:report|analysis|summary)\s+for\s+([A-Za-z\s]+)/i
+              ];
+              
+              for (const pattern of nodeReportPatterns) {
+                const match = question.match(pattern);
+                if (match && match[1]) {
+                  const name = match[1].trim();
+                  // Filter out common words that might be captured
+                  if (name.length > 2 && !['the', 'and', 'or', 'for', 'about', 'on'].includes(name.toLowerCase())) {
+                    return name;
+                  }
+                }
+              }
+              return null;
+            })();
+
+            // Report request detection (check this SECOND)
             const isReportRequest = (() => {
               const reportKeywords = [
                 'report', 'analysis', 'summary', 'network analysis', 'bridge analysis', 
@@ -1890,8 +1920,82 @@ const NFCTrigger = ({ addNode }) => {
               return analyticalKeywords.some(keyword => question.includes(keyword));
             })();
 
-            if (isReportRequest) {
-              // For report requests, execute the query and generate a comprehensive report
+            if (isNodeReportRequest) {
+              // For individual node report requests
+              try {
+                const nodeName = isNodeReportRequest;
+                console.log("Generating node report for:", nodeName);
+                
+                const session = driver.session({ database: "neo4j" });
+                
+                // Query for the specific node and its connections
+                const nodeQuery = `
+                  MATCH (u:User)
+                  WHERE toLower(u.name) = toLower($nodeName)
+                  OPTIONAL MATCH (u)-[r:CONNECTED_TO]->(v:User)
+                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
+                         v.name AS targetName, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite,
+                         r.note AS connectionNote, r.createdAt AS connectionTime
+                  UNION
+                  MATCH (v:User)-[r:CONNECTED_TO]->(u:User)
+                  WHERE toLower(u.name) = toLower($nodeName)
+                  RETURN v.name AS sourceName, v.role AS sourceRole, v.location AS sourceLocation, v.website AS sourceWebsite,
+                         u.name AS targetName, u.role AS targetRole, u.location AS targetLocation, u.website AS targetWebsite,
+                         r.note AS connectionNote, r.createdAt AS connectionTime
+                  UNION
+                  MATCH (u:User)
+                  WHERE toLower(u.name) = toLower($nodeName)
+                  AND NOT EXISTS((u)-[:CONNECTED_TO]->())
+                  AND NOT EXISTS(()-[:CONNECTED_TO]->(u))
+                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
+                         null AS targetName, null AS targetRole, null AS targetLocation, null AS targetWebsite,
+                         null AS connectionNote, null AS connectionTime
+                `;
+                
+                let result = await session.run(nodeQuery, { nodeName });
+                console.log("Node query result:", result.records.length, "records");
+                if (result.records.length > 0) {
+                  console.log("First record:", result.records[0].toObject());
+                }
+                
+                // If no results, try a fuzzy search
+                if (result.records.length === 0) {
+                  console.log("No exact match found, trying fuzzy search...");
+                  const fuzzyQuery = `
+                    MATCH (u:User)
+                    WHERE toLower(u.name) CONTAINS toLower($nodeName)
+                    RETURN u.name AS name, u.role AS role, u.location AS location
+                    LIMIT 5
+                  `;
+                  const fuzzyResult = await session.run(fuzzyQuery, { nodeName });
+                  
+                  if (fuzzyResult.records.length > 0) {
+                    const suggestions = fuzzyResult.records.map(record => record.get('name')).join(', ');
+                    await session.close();
+                    displayNetworkReport(`No exact match found for "${nodeName}". Did you mean one of these?\n\n${suggestions}\n\nPlease try with the exact name.`, `Name Not Found: ${nodeName}`);
+                    return;
+                  }
+                }
+                
+                await session.close();
+
+                // Generate a node-specific report
+                const report = generateNodeReport(result, nodeName, inputValue);
+                
+                // Display the report in a modal
+                displayNetworkReport(report, `Node Analysis: ${nodeName}`);
+                
+                // Clear the input after showing the report
+                setTimeout(() => {
+                  setInputValue("");
+                }, 10000);
+                
+              } catch (queryError) {
+                console.error("Error generating node report:", queryError);
+                displayNetworkReport(`Sorry, I couldn't generate a report for that person. Please check the name and try again.`, inputValue);
+              }
+            } else if (isReportRequest) {
+              // For general report requests, execute the query and generate a comprehensive report
               try {
                 const session = driver.session({ database: "neo4j" });
                 const result = await session.run(generatedQuery);
@@ -2754,6 +2858,144 @@ ${topConnectors.slice(0, 5).map((connector, index) =>
           return report;
         };
 
+        // Helper function to generate individual node analysis reports
+        const generateNodeReport = (result, nodeName, question) => {
+          const records = result.records;
+          
+          console.log("generateNodeReport called with:", { nodeName, recordCount: records.length });
+          
+          if (records.length === 0) {
+            return `No data found for ${nodeName}. Please check the name and try again.`;
+          }
+
+          // Parse the node data
+          const connections = [];
+          const nodeInfo = {};
+          const connectedUsers = new Map();
+
+          records.forEach((record, index) => {
+            const sourceName = record.get('sourceName');
+            const sourceRole = record.get('sourceRole');
+            const sourceLocation = record.get('sourceLocation');
+            const sourceWebsite = record.get('sourceWebsite');
+            const targetName = record.get('targetName');
+            const targetRole = record.get('targetRole');
+            const targetLocation = record.get('targetLocation');
+            const targetWebsite = record.get('targetWebsite');
+            const connectionNote = record.get('connectionNote');
+            const connectionTime = record.get('connectionTime');
+            
+            console.log(`Record ${index}:`, { sourceName, targetName, nodeName });
+
+            // Store node info (case-insensitive comparison)
+            if (sourceName && sourceName.toLowerCase() === nodeName.toLowerCase()) {
+              nodeInfo.name = sourceName;
+              nodeInfo.role = sourceRole;
+              nodeInfo.location = sourceLocation;
+              nodeInfo.website = sourceWebsite;
+              console.log("Found node info from source:", { name: sourceName, role: sourceRole, location: sourceLocation });
+            } else if (targetName && targetName.toLowerCase() === nodeName.toLowerCase()) {
+              nodeInfo.name = targetName;
+              nodeInfo.role = targetRole;
+              nodeInfo.location = targetLocation;
+              nodeInfo.website = targetWebsite;
+              console.log("Found node info from target:", { name: targetName, role: targetRole, location: targetLocation });
+            }
+
+            // Count connections
+            if (sourceName && targetName && sourceName !== targetName) {
+              const otherPerson = sourceName === nodeName ? targetName : sourceName;
+              const otherRole = sourceName === nodeName ? targetRole : sourceRole;
+              const otherLocation = sourceName === nodeName ? targetLocation : sourceLocation;
+              
+              connectedUsers.set(otherPerson, {
+                name: otherPerson,
+                role: otherRole,
+                location: otherLocation,
+                note: connectionNote,
+                time: connectionTime
+              });
+              
+              connections.push({
+                source: sourceName,
+                target: targetName,
+                note: connectionNote,
+                time: connectionTime
+              });
+            }
+          });
+
+          // Analyze connections
+          const totalConnections = connectedUsers.size;
+          const roles = Array.from(connectedUsers.values()).map(u => u.role).filter(Boolean);
+          const uniqueRoles = [...new Set(roles)];
+          const locations = Array.from(connectedUsers.values()).map(u => u.location).filter(Boolean);
+          const uniqueLocations = [...new Set(locations)];
+
+          // Find most common connections
+          const roleCounts = {};
+          roles.forEach(role => {
+            roleCounts[role] = (roleCounts[role] || 0) + 1;
+          });
+          const topRoles = Object.entries(roleCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+
+          const locationCounts = {};
+          locations.forEach(location => {
+            locationCounts[location] = (locationCounts[location] || 0) + 1;
+          });
+          const topLocations = Object.entries(locationCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+
+          console.log("Final nodeInfo:", nodeInfo);
+          
+          // Generate the report
+          const report = `# 👤 **Individual Network Analysis: ${nodeName}**
+
+## **🎯 Profile Summary**
+- **Name**: ${nodeInfo.name || 'N/A'}
+- **Role**: ${nodeInfo.role || 'N/A'}
+- **Location**: ${nodeInfo.location || 'N/A'}
+- **Website**: ${nodeInfo.website || 'N/A'}
+- **Total Connections**: ${totalConnections}
+
+## **🔗 Connection Analysis**
+- **Network Reach**: ${totalConnections} direct connections
+- **Role Diversity**: ${uniqueRoles.length} different professional roles
+- **Geographic Reach**: ${uniqueLocations.length} different locations
+
+## **📊 Top Connection Categories**
+
+### **Most Connected Roles**
+${topRoles.map(([role, count]) => 
+  `- **${role}**: ${count} connections`
+).join('\n')}
+
+### **Most Connected Locations**
+${topLocations.map(([location, count]) => 
+  `- **${location}**: ${count} connections`
+).join('\n')}
+
+## **🌍 Network Diversity**
+- **Professional Diversity**: ${uniqueRoles.length} unique roles
+- **Geographic Diversity**: ${uniqueLocations.length} unique locations
+- **Connection Quality**: ${connections.filter(c => c.note).length} connections with notes
+
+## **💡 Key Insights**
+- ${nodeName} is a ${totalConnections > 20 ? 'super connector' : totalConnections > 10 ? 'active networker' : 'moderate connector'}
+- ${uniqueRoles.length > 3 ? 'High professional diversity' : 'Moderate professional diversity'} in connections
+- ${uniqueLocations.length > 5 ? 'Strong geographic reach' : 'Local to regional focus'} in networking
+
+## **🎯 Network Impact**
+- **Bridge Potential**: ${uniqueRoles.length > 2 && uniqueLocations.length > 3 ? 'High - connects diverse communities' : 'Moderate - focused connections'}
+- **Information Flow**: ${totalConnections > 15 ? 'Excellent - high connectivity' : totalConnections > 8 ? 'Good - moderate connectivity' : 'Limited - few connections'}
+- **Resource Sharing**: ${uniqueRoles.length > 2 ? 'Strong - diverse professional network' : 'Focused - similar professional backgrounds'}`;
+
+          return report;
+        };
+
         // Helper function to display network reports
         const displayNetworkReport = (report, question) => {
           // Format the report with better styling
@@ -3056,7 +3298,7 @@ return (
               <div dangerouslySetInnerHTML={{ __html: analyticalAnswer.answer }} />
             ) : (
               <div style={{ padding: "20px", maxHeight: "calc(80vh - 60px)", overflowY: "auto" }}>
-                <p><strong>Answer:</strong> {analyticalAnswer.answer}</p>
+          <p><strong>Answer:</strong> {analyticalAnswer.answer}</p>
               </div>
             )}
           </div>
