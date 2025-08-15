@@ -74,7 +74,7 @@ class CypherViz extends React.Component {
     
     // Start breathing cycle every 4 seconds
     this.breathingInterval = setInterval(() => {
-      if (!this.state.isUserActive && this.fgRef.current) {
+      if (!this.state.isUserActive && this.fgRef.current && !this.state.timelineMode) {
         this.triggerBreathingCycle();
       }
     }, 4000); // 4 second cycle
@@ -1246,6 +1246,9 @@ class CypherViz extends React.Component {
       // Entering timeline mode - get timeline stats
       const stats = await this.getTimelineStats();
       
+      // Stop breathing animation when entering timeline mode
+      this.stopBreathingAnimation();
+      
       // Ensure we have valid stats
       const validStats = stats || {
         earliest: new Date(Date.now() - 86400000), // 24 hours ago
@@ -1266,6 +1269,11 @@ class CypherViz extends React.Component {
         timelineData: null,
         timelineStats: null
       });
+      
+      // Restart breathing animation if user is idle
+      if (!this.state.isUserActive) {
+        this.startBreathingAnimation();
+      }
     }
   };
 
