@@ -1850,6 +1850,7 @@ const NFCTrigger = ({ addNode }) => {
             
             // Individual node report detection (check this FIRST)
             const isNodeReportRequest = (() => {
+              console.log("Checking for node report request:", inputValue);
               const nodeReportPatterns = [
                 /report.*(?:for|about|on)\s+([A-Za-z\s]+)/i,
                 /(?:generate|create|show)\s+(?:a\s+)?report.*(?:for|about|on)\s+([A-Za-z\s]+)/i,
@@ -1862,9 +1863,17 @@ const NFCTrigger = ({ addNode }) => {
                 const match = question.match(pattern);
                 if (match && match[1]) {
                   const name = match[1].trim();
-                  // Filter out common words that might be captured
-                  if (name.length > 2 && !['the', 'and', 'or', 'for', 'about', 'on'].includes(name.toLowerCase())) {
-                    return name;
+                  // Filter out common words and action verbs that might be captured
+                  const excludedWords = [
+                    'the', 'and', 'or', 'for', 'about', 'on', 'generate', 'create', 'show', 
+                    'analysis', 'summary', 'report', 'network', 'comprehensive', 'full'
+                  ];
+                  if (name.length > 2 && !excludedWords.includes(name.toLowerCase())) {
+                    // Additional check: make sure it looks like a person's name (contains space or is a single word)
+                    if (name.includes(' ') || name.length > 3) {
+                      console.log("Node report detected for:", name);
+                      return name;
+                    }
                   }
                 }
               }
