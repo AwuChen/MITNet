@@ -675,6 +675,9 @@ class CypherViz extends React.Component {
       // Preserve latestNode if newNodeName is null but we have a valid latestNode
       // Don't set latestNode during initial load
       const nodeToSet = this.isInitialLoad ? null : (newNodeName || this.state.latestNode);
+      
+      // Note: Focus timeout is now managed in GraphView component
+      
       this.setState({ 
         data: updatedData, 
         latestNode: nodeToSet,
@@ -711,7 +714,7 @@ class CypherViz extends React.Component {
     }
   };
 
-    // Focus on a newly added node with multiple attempts
+    // Focus on a newly added node with temporary focus (1 second) then return to user control
   focusOnNewNode = (nodeName, graphData) => {
     
     const attemptFocus = (attempt = 1) => {
@@ -731,11 +734,16 @@ class CypherViz extends React.Component {
       }
 
       try {
-            this.fgRef.current.centerAt(newNode.x, newNode.y, 1500);
-            this.fgRef.current.zoom(1.25);
+        // Focus on the node
+        this.fgRef.current.centerAt(newNode.x, newNode.y, 1500);
+        this.fgRef.current.zoom(1.25);
         
-        // Also ensure the latestNode state is set
+        // Set the latestNode state for visual highlighting
         this.setState({ latestNode: nodeName });
+        
+        // Note: Focus timeout is now managed in GraphView component
+        // The auto-zoom will handle the temporary focus behavior
+        
       } catch (error) {
         setTimeout(() => attemptFocus(attempt + 1), 500);
       }
@@ -993,6 +1001,8 @@ class CypherViz extends React.Component {
       clearTimeout(this.pollingFocusTimeout);
       this.pollingFocusTimeout = null;
     }
+    
+    // Note: Focus timeout is now managed in GraphView component
     
     // Stop breathing animation
     this.stopBreathingAnimation();
@@ -1543,13 +1553,21 @@ const NFCTrigger = ({ addNode }) => {
         const [showNfcRelationshipPopup, setShowNfcRelationshipPopup] = useState(false);
         const [currentNfcConnection, setCurrentNfcConnection] = useState(null); // For NFC relationship note popup
         const [hoveredLink, setHoveredLink] = useState(null); // For link hover effects
+        const [focusTimeout, setFocusTimeout] = useState(null); // Track focus timeout
+        const [autoZoomTriggered, setAutoZoomTriggered] = useState(false); // Track if auto-zoom has been triggered
 
         // Detect when latestNode changes (NFC addition) and set lastAction
         useEffect(() => {
           if (latestNode) {
             setLastAction('latestNode');
+            // Clear any existing focus timeouts when new visual states are set
+            if (focusTimeout) {
+              clearTimeout(focusTimeout);
+              setFocusTimeout(null);
+            }
+            setAutoZoomTriggered(false); // Allow new auto-zoom for this latestNode
           }
-        }, [latestNode]);
+        }, [latestNode, focusTimeout]);
 
         // Auto-popup form for NFC nodes
         useEffect(() => {
@@ -1682,133 +1700,82 @@ const NFCTrigger = ({ addNode }) => {
                          })() :
                          getNDegreeNodes(zoomFocus, visibleDegree);
         
-        // Auto-zoom to visible nodes
+        // Auto-zoom to visible nodes with temporary focus behavior
         useEffect(() => {
-          // Only auto-zoom if there's a search term or if a node was clicked (not just hovered)
-          // Don't auto-zoom for latestNode unless there's no other focus
-          if (fgRef.current && zoomNodes.size > 0) {
-            // Zoom based on last action
-            if (lastAction === 'click' && clickedNode) {
-              const visibleNodes = data.nodes.filter(node => zoomNodes.has(node.name));
-              if (visibleNodes.length > 0) {
-                // Calculate bounding box of visible nodes
-                const xs = visibleNodes.map(n => n.x);
-                const ys = visibleNodes.map(n => n.y);
-                const minX = Math.min(...xs);
-                const maxX = Math.max(...xs);
-                const minY = Math.min(...ys);
-                const maxY = Math.max(...ys);
-                
-                const centerX = (minX + maxX) / 2;
-                const centerY = (minY + maxY) / 2;
-                const width = maxX - minX;
-                const height = maxY - minY;
-                
-                // Add some padding
-                const padding = 100;
-                const scale = Math.min(
-                  (window.innerWidth - padding) / width,
-                  (window.innerHeight - padding) / height,
-                  2 // Max zoom level
-                );
-                
-                fgRef.current.centerAt(centerX, centerY, 1000);
-                fgRef.current.zoom(scale, 1000);
-              }
-            }
-            // For search results (only if no node is clicked)
-            else if (lastAction === 'search' && inputValue) {
-              const visibleNodes = data.nodes.filter(node => zoomNodes.has(node.name));
-              if (visibleNodes.length > 0) {
-                // Calculate bounding box of visible nodes
-                const xs = visibleNodes.map(n => n.x);
-                const ys = visibleNodes.map(n => n.y);
-                const minX = Math.min(...xs);
-                const maxX = Math.max(...xs);
-                const minY = Math.min(...ys);
-                const maxY = Math.max(...ys);
-                
-                const centerX = (minX + maxX) / 2;
-                const centerY = (minY + maxY) / 2;
-                const width = maxX - minX;
-                const height = maxY - minY;
-                
-                // Add some padding
-                const padding = 100;
-                const scale = Math.min(
-                  (window.innerWidth - padding) / width,
-                  (window.innerHeight - padding) / height,
-                  2 // Max zoom level
-                );
-                
-                fgRef.current.centerAt(centerX, centerY, 1000);
-                fgRef.current.zoom(scale, 1000);
-              }
-            }
-            // For latestNode, delay the zoom to allow graph to stabilize
-            else if (lastAction === 'latestNode' && latestNode) {
-              setTimeout(() => {
-                const visibleNodes = data.nodes.filter(node => zoomNodes.has(node.name));
-                if (visibleNodes.length > 0 && fgRef.current) {
-                  // Calculate bounding box of visible nodes
-                  const xs = visibleNodes.map(n => n.x);
-                  const ys = visibleNodes.map(n => n.y);
-                  const minX = Math.min(...xs);
-                  const maxX = Math.max(...xs);
-                  const minY = Math.min(...ys);
-                  const maxY = Math.max(...ys);
-                  
-                  const centerX = (minX + maxX) / 2;
-                  const centerY = (minY + maxY) / 2;
-                  const width = maxX - minX;
-                  const height = maxY - minY;
-                  
-                  // Add some padding
-                  const padding = 100;
-                  const scale = Math.min(
-                    (window.innerWidth - padding) / width,
-                    (window.innerHeight - padding) / height,
-                    2 // Max zoom level
-                  );
-                  
-                  fgRef.current.centerAt(centerX, centerY, 1000);
-                  fgRef.current.zoom(scale, 1000);
-                }
-              }, 1000); // 1 second delay for latestNode
-            }
-            // For mutation queries, zoom to the mutated nodes
-            else if (lastAction === 'mutation' && mutatedNodes.length > 0) {
-              setTimeout(() => {
-                const visibleNodes = data.nodes.filter(node => zoomNodes.has(node.name));
-                if (visibleNodes.length > 0 && fgRef.current) {
-                  // Calculate bounding box of visible nodes
-                  const xs = visibleNodes.map(n => n.x);
-                  const ys = visibleNodes.map(n => n.y);
-                  const minX = Math.min(...xs);
-                  const maxX = Math.max(...xs);
-                  const minY = Math.min(...ys);
-                  const maxY = Math.max(...ys);
-                  
-                  const centerX = (minX + maxX) / 2;
-                  const centerY = (minY + maxY) / 2;
-                  const width = maxX - minX;
-                  const height = maxY - minY;
-                  
-                  // Add some padding
-                  const padding = 100;
-                  const scale = Math.min(
-                    (window.innerWidth - padding) / width,
-                    (window.innerHeight - padding) / height,
-                    2 // Max zoom level
-                  );
-                  
-                  fgRef.current.centerAt(centerX, centerY, 1000);
-                  fgRef.current.zoom(scale, 1000);
-                }
-              }, 1000); // 1 second delay for mutation
-            }
+          // Only run auto-zoom if it hasn't been triggered yet and we have a valid action
+          if (autoZoomTriggered || !fgRef.current || !lastAction) {
+            return;
           }
-        }, [zoomNodes, data.nodes, fgRef, lastAction, clickedNode, latestNode, inputValue, mutatedNodes]);
+          
+          // Clear any existing focus timeout
+          if (focusTimeout) {
+            clearTimeout(focusTimeout);
+            setFocusTimeout(null);
+          }
+          
+          // Mark that auto-zoom has been triggered
+          setAutoZoomTriggered(true);
+          
+          // Only auto-zoom if there are nodes to zoom to
+          if (zoomNodes.size > 0) {
+            const performAutoZoom = () => {
+              const visibleNodes = data.nodes.filter(node => zoomNodes.has(node.name));
+              if (visibleNodes.length === 0) return;
+              
+              // Calculate bounding box of visible nodes
+              const xs = visibleNodes.map(n => n.x);
+              const ys = visibleNodes.map(n => n.y);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const minY = Math.min(...ys);
+              const maxY = Math.max(...ys);
+              
+              const centerX = (minX + maxX) / 2;
+              const centerY = (minY + maxY) / 2;
+              const width = maxX - minX;
+              const height = maxY - minY;
+              
+              // Add some padding
+              const padding = 100;
+              const scale = Math.min(
+                (window.innerWidth - padding) / width,
+                (window.innerHeight - padding) / height,
+                2 // Max zoom level
+              );
+              
+              fgRef.current.centerAt(centerX, centerY, 1000);
+              fgRef.current.zoom(scale, 1000);
+              
+              // Set temporary focus timeout to just reset the flag (no zoom out)
+              const newFocusTimeout = setTimeout(() => {
+                setFocusTimeout(null);
+                setAutoZoomTriggered(false); // Reset the flag to allow future auto-zooms
+              }, 1000);
+              
+              setFocusTimeout(newFocusTimeout);
+            };
+            
+            // For latestNode and mutation, add a delay to allow graph to stabilize
+            if (lastAction === 'latestNode' || lastAction === 'mutation') {
+              setTimeout(performAutoZoom, 1000);
+            } else {
+              performAutoZoom();
+            }
+          } else {
+            // If no nodes to zoom to, reset the flag immediately
+            setAutoZoomTriggered(false);
+          }
+        }, [lastAction, clickedNode, latestNode, inputValue, mutatedNodes]); // Removed focusTimeout from dependencies
+
+        // Cleanup focus timeout and reset flags on unmount
+        useEffect(() => {
+          return () => {
+            if (focusTimeout) {
+              clearTimeout(focusTimeout);
+            }
+            setAutoZoomTriggered(false);
+          };
+        }, [focusTimeout]);
 
         const handleInputChange = (event) => {
           const input = event.target.value;
@@ -1822,6 +1789,13 @@ const NFCTrigger = ({ addNode }) => {
           if (input.trim()) {
             setClickedNode(null);
             setLastAction('search');
+            
+            // Clear any existing focus timeouts when new visual states are set
+            if (focusTimeout) {
+              clearTimeout(focusTimeout);
+              setFocusTimeout(null);
+            }
+            setAutoZoomTriggered(false); // Allow new auto-zoom for this search
           }
         };
 
@@ -2100,6 +2074,13 @@ const NFCTrigger = ({ addNode }) => {
                 setMutatedNodes(extractedNodes);
                 setLastAction('mutation');
                 
+                // Clear any existing focus timeouts when new visual states are set
+                if (focusTimeout) {
+                  clearTimeout(focusTimeout);
+                  setFocusTimeout(null);
+                }
+                setAutoZoomTriggered(false); // Allow new auto-zoom for this mutation
+                
                 // Immediately return to default query without any delay
                 const defaultQuery = `
                   MATCH (u:User)-[r:CONNECTED_TO]->(v:User)
@@ -2141,6 +2122,13 @@ const NFCTrigger = ({ addNode }) => {
           
           // Clear search when clicking a node to avoid zoom conflicts
           setInputValue("");
+          
+          // Clear any existing focus timeout and reset auto-zoom flag
+          if (focusTimeout) {
+            clearTimeout(focusTimeout);
+            setFocusTimeout(null);
+          }
+          setAutoZoomTriggered(false); // Allow new auto-zoom for this click
         };
 
         const handleNodeHover = (node) => {
@@ -3370,6 +3358,9 @@ return (
     setAnalyticalAnswer(null);
     setSelectedLink(null);
     setRelationshipData({});
+    
+    // Clear any active focus timeouts when background is clicked
+    // Note: focusTimeout is managed in GraphView component, so we don't need to clear it here
   }}
   nodeCanvasObject={(node, ctx) => {
     const isHighlighted =
@@ -3405,12 +3396,15 @@ return (
       nodeRadius = 6 * currentScale;
     }
     
-    // Use latestNode for editing (black), pollingFocusNode for viewing (blue), or white for normal
+    // Use latestNode for editing (black), pollingFocusNode for viewing (green), clickedNode for selection (gray), or white for normal
+    // Visual states persist even after focus period ends
     let fillColor = "white";
     if (node.name === latestNode) {
-      fillColor = "black"; // Editable node
+      fillColor = "black"; // Editable node - persists after focus
     } else if (node.name === pollingFocusNode) {
-      fillColor = "green"; // Non-editable polling focus
+      fillColor = "green"; // Non-editable polling focus - persists after focus
+    } else if (node.name === clickedNode) {
+      fillColor = "gray"; // Clicked node - persists after focus
     }
     
     // Add subtle color shift during breathing animation
