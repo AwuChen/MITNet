@@ -3057,7 +3057,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the MSEI students from CA"
+        placeholder="Show me all the Media Lab students from MIT"
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
@@ -3604,7 +3604,7 @@ return (
       <textarea 
         value={relationshipNote} 
         onChange={(e) => setRelationshipNote(e.target.value)}
-        placeholder="e.g., Met at USC networking event, Introduced by mutual friend, Worked together on project..."
+        placeholder="e.g., Met at MIT networking event, Introduced by mutual friend, Worked together on project..."
         style={{ width: "100%", marginTop: "5px", padding: "5px", minHeight: "80px", resize: "vertical" }}
       /></p>
 
