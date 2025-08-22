@@ -3570,8 +3570,8 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Email:</strong>{" "}
-        <a href={`mailto:${selectedNode.website}`}>
+      {selectedNode?.website && <p><strong>Website:</strong>{" "}
+        <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
           ? `${selectedNode.website.substring(0, 30)}...`
         : selectedNode.website}
@@ -3592,8 +3592,8 @@ return (
       <p><strong>Connected to:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Email:</strong>{" "}
-        <a href={`mailto:${selectedNode.website}`}>
+      {selectedNode?.website && <p><strong>Website:</strong>{" "}
+        <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
           {selectedNode.website.length > 30 
             ? `${selectedNode.website.substring(0, 30)}...`
           : selectedNode.website}
