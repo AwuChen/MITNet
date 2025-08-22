@@ -6,10 +6,10 @@ import * as serviceWorker from './serviceWorker';
 import * as neo4j from  'neo4j-driver';
 
 const driver = neo4j.driver(
-  process.env.NEO4J_URI || 'neo4j+s://23f1f8d0.databases.neo4j.io',
+  process.env.NEO4J_URI || 'neo4j+s://f2f86513.databases.neo4j.io',
   neo4j.auth.basic(
     process.env.NEO4J_USER || 'neo4j',
-    process.env.NEO4J_PASSWORD || 'xQ3FQK4HZq5o-lbJJD5yHrTSdJQiejLW3iiejdoGs_E'
+    process.env.NEO4J_PASSWORD || 'L3mEQh9heKy6GlV8riaaI63BdsuNq6O9_GozSesfQXM'
   ),
   {
     //encrypted: process.env.NEO4J_ENCRYPTED ? 'ENCRYPTION_ON' : 'ENCRYPTION_OFF',
