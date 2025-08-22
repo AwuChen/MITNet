@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/MITNet/static/css/main.01b6fc35.chunk.css",
+    "main.js": "/MITNet/static/js/main.aa7dac6b.chunk.js",
+    "main.js.map": "/MITNet/static/js/main.aa7dac6b.chunk.js.map",
+    "runtime-main.js": "/MITNet/static/js/runtime-main.5bc9cb6c.js",
+    "runtime-main.js.map": "/MITNet/static/js/runtime-main.5bc9cb6c.js.map",
+    "static/js/2.fe9edaff.chunk.js": "/MITNet/static/js/2.fe9edaff.chunk.js",
+    "static/js/2.fe9edaff.chunk.js.map": "/MITNet/static/js/2.fe9edaff.chunk.js.map",
+    "index.html": "/MITNet/index.html",
+    "precache-manifest.efcb9e4dfec7b66b3dd3e32bbd33dbfe.js": "/MITNet/precache-manifest.efcb9e4dfec7b66b3dd3e32bbd33dbfe.js",
+    "service-worker.js": "/MITNet/service-worker.js",
+    "static/css/main.01b6fc35.chunk.css.map": "/MITNet/static/css/main.01b6fc35.chunk.css.map",
+    "static/js/2.fe9edaff.chunk.js.LICENSE.txt": "/MITNet/static/js/2.fe9edaff.chunk.js.LICENSE.txt"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.5bc9cb6c.js",
+    "static/js/2.fe9edaff.chunk.js",
+    "static/css/main.01b6fc35.chunk.css",
+    "static/js/main.aa7dac6b.chunk.js"
+  ]
+}
