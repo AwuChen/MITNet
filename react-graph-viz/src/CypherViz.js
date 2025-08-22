@@ -3571,7 +3571,7 @@ return (
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Website:</strong>{" "}
-        <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
+        <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
           ? `${selectedNode.website.substring(0, 30)}...`
         : selectedNode.website}
@@ -3593,7 +3593,7 @@ return (
       {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Website:</strong>{" "}
-        <a href={selectedNode.website} target="_blank" rel="noopener noreferrer">
+        <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
           {selectedNode.website.length > 30 
             ? `${selectedNode.website.substring(0, 30)}...`
           : selectedNode.website}
