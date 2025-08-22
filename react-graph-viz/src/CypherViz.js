@@ -3077,7 +3077,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Generate report"
+        placeholder="Search for users, generate report, etc."
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
