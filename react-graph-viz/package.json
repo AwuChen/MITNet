@@ -1,7 +1,7 @@
 {
   "name": "graph-viz",
   "version": "0.1.0",
-  "homepage": "https://awuchen.github.io/GreifNet",
+  "homepage": "https://awuchen.github.io/MITNet",
   "private": true,
   "dependencies": {
     "@testing-library/jest-dom": "^4.2.4",

@@ -1522,7 +1522,7 @@ const NFCTrigger = ({ addNode }) => {
         }
 
         setTimeout(() => {
-          window.location.assign("/GreifNet/#/");
+          window.location.assign("/MITNet/#/");
           }, 2000);
         };
 
