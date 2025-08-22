@@ -3068,7 +3068,7 @@ return (
           }
         }}
       />
-      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/greif-network-3d/", "_blank")}>Visualize3D</button>
+      <button id="visualize" onClick={() => window.open("https://awuchen.github.io/mit-network-3d/", "_blank")}>Visualize3D</button>
       <button id="info" onClick={() => window.open("https://www.hako.soooul.xyz/drafts/washi", "_blank")}>Info</button>
       <button 
         id="timeline" 
