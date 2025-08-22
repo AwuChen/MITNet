@@ -3077,7 +3077,7 @@ return (
     <div width="95%">
       <input
         type="text"
-        placeholder="Show me all the Media Lab students from MIT"
+        placeholder="Generate report"
         style={{ display: "block", width: "95%", height: "40px", margin: "0 auto", textAlign: "center", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
         value={inputValue}
         onChange={handleInputChange}
