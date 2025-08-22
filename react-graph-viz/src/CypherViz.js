@@ -3494,7 +3494,7 @@ return (
       <input 
         value={nfcRoleInput} 
         onChange={(e) => setNfcRoleInput(e.target.value)}
-        placeholder="e.g., MSEI, MSSE, MSBA, MBA, etc." 
+        placeholder="e.g., Media Lab, Architecture, Material Science, Aerospace, etc." 
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
         onKeyPress={(e) => {
           if (e.key === 'Enter') {
@@ -3532,7 +3532,7 @@ return (
       <input 
         name="role" 
         value={editedNode.role || ""} 
-        placeholder="e.g., MSEI, MBA, BS, MS, PhD" 
+        placeholder="e.g., Media Lab, Architecture, Material Science, Aerospace" 
         onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
