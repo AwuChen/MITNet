@@ -1308,7 +1308,7 @@ class CypherViz extends React.Component {
         { timestamp }
       );
 
-      const nodes = new Set();
+      const nodesMap = new Map();
       const links = [];
 
       result.records.forEach(record => {
@@ -1321,12 +1321,32 @@ class CypherViz extends React.Component {
         const sourceWebsite = record.get('sourceWebsite');
         const targetWebsite = record.get('targetWebsite');
 
-        // Always add the source node
-        nodes.add(source);
+        // Add source node with properties
+        if (source && !nodesMap.has(source)) {
+          nodesMap.set(source, {
+            name: source,
+            role: sourceRole || '',
+            location: sourceLocation || '',
+            website: sourceWebsite || '',
+            x: Math.random() * 500,
+            y: Math.random() * 500,
+          });
+        }
         
-        // Add target node and link only if there's a relationship
+        // Add target node with properties if there's a relationship
+        if (target && !nodesMap.has(target)) {
+          nodesMap.set(target, {
+            name: target,
+            role: targetRole || '',
+            location: targetLocation || '',
+            website: targetWebsite || '',
+            x: Math.random() * 500,
+            y: Math.random() * 500,
+          });
+        }
+        
+        // Add link if there's a relationship
         if (target) {
-          nodes.add(target);
           links.push({
             source,
             target,
@@ -1341,7 +1361,7 @@ class CypherViz extends React.Component {
       });
 
       const timelineData = {
-        nodes: Array.from(nodes).map(name => ({ name })),
+        nodes: Array.from(nodesMap.values()),
         links
       };
 
