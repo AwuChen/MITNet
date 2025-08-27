@@ -3510,11 +3510,11 @@ return (
         }}
       /></p>
 
-      <p><strong>Program:</strong>
+      <p><strong>Area of Research:</strong>
       <input 
         value={nfcRoleInput} 
         onChange={(e) => setNfcRoleInput(e.target.value)}
-        placeholder="e.g., Media Lab, Architecture, Material Science, Aerospace, etc." 
+        placeholder="e.g., Tangible interface, AI, Robotics, Material Science, Aerospace, etc." 
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
         onKeyPress={(e) => {
           if (e.key === 'Enter') {
@@ -3548,16 +3548,16 @@ return (
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
 
-      <p><strong>Program:</strong>
+      <p><strong>Area of Research:</strong>
       <input 
         name="role" 
         value={editedNode.role || ""} 
-        placeholder="e.g., Media Lab, Architecture, Material Science, Aerospace" 
+        placeholder="e.g., Tangible interface, AI, Robotics, Material Science, Aerospace" 
         onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
 
-      <p><strong>Location:</strong>
+      <p><strong>Place of Origin:</strong>
       <input 
         name="location" 
         value={editedNode.location || ""} 
@@ -3588,8 +3588,8 @@ return (
     >
       <h3>Network Info</h3>
       <p><strong>Name:</strong> {selectedNode?.name}</p>
-      {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
-      {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
+      {selectedNode?.role && <p><strong>Area of Research:</strong> {selectedNode.role}</p>}
+      {selectedNode?.location && <p><strong>Place of Origin:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Website:</strong>{" "}
         <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
@@ -3610,8 +3610,8 @@ return (
     >
       <h3>Add Connection Note</h3>
       <p><strong>Connected to:</strong> {selectedNode?.name}</p>
-      {selectedNode?.role && <p><strong>Program:</strong> {selectedNode.role}</p>}
-      {selectedNode?.location && <p><strong>Location:</strong> {selectedNode.location}</p>}
+      {selectedNode?.role && <p><strong>Area of Research:</strong> {selectedNode.role}</p>}
+      {selectedNode?.location && <p><strong>Place of Origin:</strong> {selectedNode.location}</p>}
       {selectedNode?.website && <p><strong>Website:</strong>{" "}
         <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
           {selectedNode.website.length > 30 
