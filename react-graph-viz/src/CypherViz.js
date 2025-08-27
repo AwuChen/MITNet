@@ -3566,7 +3566,7 @@ return (
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
 
-      <p><strong>Email/Website:</strong>
+      <p><strong>Email/Email or Website:</strong>
       <input 
         name="website" 
         value={editedNode.website || ""} 
@@ -3590,7 +3590,7 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Area of Research:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Place of Origin:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Website:</strong>{" "}
+      {selectedNode?.website && <p><strong>Email or Website:</strong>{" "}
         <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
         {selectedNode.website.length > 30 
           ? `${selectedNode.website.substring(0, 30)}...`
@@ -3612,7 +3612,7 @@ return (
       <p><strong>Connected to:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Area of Research:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Place of Origin:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Website:</strong>{" "}
+      {selectedNode?.website && <p><strong>Email or Website:</strong>{" "}
         <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
           {selectedNode.website.length > 30 
             ? `${selectedNode.website.substring(0, 30)}...`
