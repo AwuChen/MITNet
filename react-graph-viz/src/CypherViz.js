@@ -19,8 +19,8 @@ class CypherViz extends React.Component {
     this.state = {
       data: this.defaultData,
       query: `MATCH (u:User)-[r:CONNECTED_TO]->(v:User) 
-          RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, 
-      v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite`,
+          RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+      v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite, v.publication AS targetPublication`,
       latestNode: null, // For NFC editing
       pollingFocusNode: null, // For polling focus (non-editable)
       lastUpdateTime: null,
@@ -40,8 +40,8 @@ class CypherViz extends React.Component {
 
     // Store the default query for polling (separate from user input)
     this.defaultQuery = `MATCH (u:User)-[r:CONNECTED_TO]->(v:User) 
-        RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, 
-        v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite`;
+        RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+        v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite, v.publication AS targetPublication`;
 
     // Store the last known data hash for change detection
     this.lastDataHash = null;
@@ -559,6 +559,7 @@ class CypherViz extends React.Component {
             role: record.get("sourceRole"),
             location: record.get("sourceLocation"),
             website: record.get("sourceWebsite"),
+            publication: record.get("sourcePublication"),
             x: Math.random() * 500,
             y: Math.random() * 500,
           });
@@ -570,6 +571,7 @@ class CypherViz extends React.Component {
             role: record.get("targetRole"),
             location: record.get("targetLocation"),
             website: record.get("targetWebsite"),
+            publication: record.get("targetPublication"),
             x: Math.random() * 500,
             y: Math.random() * 500,
           });
@@ -592,6 +594,7 @@ class CypherViz extends React.Component {
                 role: node.properties.role || "",
                 location: node.properties.location || "",
                 website: node.properties.website || "",
+                publication: node.properties.publication || "",
                 x: Math.random() * 500,
                 y: Math.random() * 500,
               });
@@ -605,6 +608,7 @@ class CypherViz extends React.Component {
                 role: node.role || node.u_role || "",
                 location: node.location || node.u_location || "",
                 website: node.website || node.u_website || "",
+                publication: node.publication || node.u_publication || "",
                 x: Math.random() * 500,
                 y: Math.random() * 500,
               });
@@ -618,6 +622,7 @@ class CypherViz extends React.Component {
                 role: record.get(key.replace('name', 'role')) || "",
                 location: record.get(key.replace('name', 'location')) || "",
                 website: record.get(key.replace('name', 'website')) || "",
+                publication: record.get(key.replace('name', 'publication')) || "",
                 x: Math.random() * 500,
                 y: Math.random() * 500,
               });
@@ -799,7 +804,7 @@ class CypherViz extends React.Component {
   // Calculate a simple hash of the graph data for change detection
   calculateDataHash = (data) => {
     // Only hash the actual data, not the random coordinates
-    const nodesStr = data.nodes.map(n => `${n.name}:${n.role}:${n.location}:${n.website}`).sort().join('|');
+    const nodesStr = data.nodes.map(n => `${n.name}:${n.role}:${n.location}:${n.website}:${n.publication}`).sort().join('|');
     const linksStr = data.links.map(l => {
       const source = typeof l.source === 'object' ? l.source.name : l.source;
       const target = typeof l.target === 'object' ? l.target.name : l.target;
@@ -831,7 +836,8 @@ class CypherViz extends React.Component {
         hasChanges = true;
       } else if (oldNode.role !== newNode.role || 
                  oldNode.location !== newNode.location || 
-                 oldNode.website !== newNode.website) {
+                 oldNode.website !== newNode.website ||
+                 oldNode.publication !== newNode.publication) {
         // Existing node modified
         changedNodes.push(newNode.name);
         hasChanges = true;
@@ -1075,8 +1081,8 @@ class CypherViz extends React.Component {
           // Get all nodes with this name and their properties
           const allNodes = await session.run(
             `MATCH (u:User {name: $user})
-             RETURN u.role as role, u.location as location, u.website as website
-             ORDER BY u.role DESC, u.location DESC, u.website DESC`,
+             RETURN u.role as role, u.location as location, u.website as website, u.publication as publication
+             ORDER BY u.role DESC, u.location DESC, u.website DESC, u.publication DESC`,
             { user: capitalizedNewUser }
           );
           
@@ -1084,15 +1090,18 @@ class CypherViz extends React.Component {
           let bestRole = '';
           let bestLocation = '';
           let bestWebsite = '';
+          let bestPublication = '';
           
           allNodes.records.forEach(record => {
             const role = record.get('role');
             const location = record.get('location');
             const website = record.get('website');
+            const publication = record.get('publication');
             
             if (role && role !== '') bestRole = role;
             if (location && location !== '') bestLocation = location;
             if (website && website !== '') bestWebsite = website;
+            if (publication && publication !== '') bestPublication = publication;
           });
           
           // Delete all nodes with this name and recreate with best properties
@@ -1104,17 +1113,18 @@ class CypherViz extends React.Component {
           
           // Create a single node with the best properties
           await session.run(
-            `CREATE (u:User {name: $user, role: $role, location: $location, website: $website, createdAt: $createdAt})`,
+            `CREATE (u:User {name: $user, role: $role, location: $location, website: $website, publication: $publication, createdAt: $createdAt})`,
             { 
               user: capitalizedNewUser,
               role: bestRole,
               location: bestLocation,
               website: bestWebsite,
+              publication: bestPublication,
               createdAt: timestamp
             }
           );
           
-          console.log(`Merged duplicate nodes for "${capitalizedNewUser}" with properties:`, { bestRole, bestLocation, bestWebsite, timestamp });
+          console.log(`Merged duplicate nodes for "${capitalizedNewUser}" with properties:`, { bestRole, bestLocation, bestWebsite, bestPublication, timestamp });
         }
       }
 
@@ -1125,12 +1135,14 @@ class CypherViz extends React.Component {
          ON CREATE SET u.role = '', 
                        u.location = '', 
                        u.website = '',
+                       u.publication = '',
                        u.createdAt = $timestamp
 
          MERGE (nfc:User {name: $nfcUser}) 
          ON CREATE SET nfc.role = '', 
                        nfc.location = '', 
                        nfc.website = '',
+                       nfc.publication = '',
                        nfc.createdAt = $timestamp
 
          MERGE (u)-[r:CONNECTED_TO]->(nfc) 
@@ -1303,8 +1315,8 @@ class CypherViz extends React.Component {
          OPTIONAL MATCH (u)-[r:CONNECTED_TO]->(v:User)
          WHERE v.createdAt IS NOT NULL AND v.createdAt <= $timestamp
          AND r.createdAt IS NOT NULL AND r.createdAt <= $timestamp
-         RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
-                v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite`,
+         RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+                v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite, v.publication AS targetPublication`,
         { timestamp }
       );
 
@@ -1319,7 +1331,9 @@ class CypherViz extends React.Component {
         const sourceLocation = record.get('sourceLocation');
         const targetLocation = record.get('targetLocation');
         const sourceWebsite = record.get('sourceWebsite');
+        const sourcePublication = record.get('sourcePublication');
         const targetWebsite = record.get('targetWebsite');
+        const targetPublication = record.get('targetPublication');
 
         // Add source node with properties
         if (source && !nodesMap.has(source)) {
@@ -1328,6 +1342,7 @@ class CypherViz extends React.Component {
             role: sourceRole || '',
             location: sourceLocation || '',
             website: sourceWebsite || '',
+            publication: sourcePublication || '',
             x: Math.random() * 500,
             y: Math.random() * 500,
           });
@@ -1340,6 +1355,7 @@ class CypherViz extends React.Component {
             role: targetRole || '',
             location: targetLocation || '',
             website: targetWebsite || '',
+            publication: targetPublication || '',
             x: Math.random() * 500,
             y: Math.random() * 500,
           });
@@ -1355,7 +1371,9 @@ class CypherViz extends React.Component {
             sourceLocation,
             targetLocation,
             sourceWebsite,
-            targetWebsite
+            sourcePublication,
+            targetWebsite,
+            targetPublication
           });
         }
       });
@@ -1678,7 +1696,8 @@ const NFCTrigger = ({ addNode }) => {
             node.name.toLowerCase().includes(inputValue.toLowerCase()) ||
             (node.location && node.location.toLowerCase().includes(inputValue.toLowerCase())) ||
             (node.role && node.role.toLowerCase().includes(inputValue.toLowerCase())) ||
-            (node.website && node.website.toLowerCase().includes(inputValue.toLowerCase()))
+            (node.website && node.website.toLowerCase().includes(inputValue.toLowerCase())) ||
+            (node.publication && node.publication.toLowerCase().includes(inputValue.toLowerCase()))
           );
           searchMatches.forEach(match => {
             const matchNeighbors = getNDegreeNodes(match.name, visibleDegree);
@@ -1700,7 +1719,8 @@ const NFCTrigger = ({ addNode }) => {
                              node.name.toLowerCase().includes(inputValue.toLowerCase()) ||
                              (node.location && node.location.toLowerCase().includes(inputValue.toLowerCase())) ||
                              (node.role && node.role.toLowerCase().includes(inputValue.toLowerCase())) ||
-                             (node.website && node.website.toLowerCase().includes(inputValue.toLowerCase()))
+                             (node.website && node.website.toLowerCase().includes(inputValue.toLowerCase())) ||
+                             (node.publication && node.publication.toLowerCase().includes(inputValue.toLowerCase()))
                            );
                            const searchNodes = new Set();
                            searchMatches.forEach(match => {
@@ -1944,22 +1964,22 @@ const NFCTrigger = ({ addNode }) => {
                   MATCH (u:User)
                   WHERE toLower(u.name) = toLower($nodeName)
                   OPTIONAL MATCH (u)-[r:CONNECTED_TO]->(v:User)
-                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
-                         v.name AS targetName, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite,
+                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+                         v.name AS targetName, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite, v.publication AS targetPublication,
                          r.note AS connectionNote, r.createdAt AS connectionTime
                   UNION
                   MATCH (v:User)-[r:CONNECTED_TO]->(u:User)
                   WHERE toLower(u.name) = toLower($nodeName)
-                  RETURN v.name AS sourceName, v.role AS sourceRole, v.location AS sourceLocation, v.website AS sourceWebsite,
-                         u.name AS targetName, u.role AS targetRole, u.location AS targetLocation, u.website AS targetWebsite,
+                  RETURN v.name AS sourceName, v.role AS sourceRole, v.location AS sourceLocation, v.website AS sourceWebsite, v.publication AS sourcePublication,
+                         u.name AS targetName, u.role AS targetRole, u.location AS targetLocation, u.website AS targetWebsite, u.publication AS targetPublication,
                          r.note AS connectionNote, r.createdAt AS connectionTime
                   UNION
                   MATCH (u:User)
                   WHERE toLower(u.name) = toLower($nodeName)
                   AND NOT EXISTS((u)-[:CONNECTED_TO]->())
                   AND NOT EXISTS(()-[:CONNECTED_TO]->(u))
-                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite,
-                         null AS targetName, null AS targetRole, null AS targetLocation, null AS targetWebsite,
+                  RETURN u.name AS sourceName, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+                         null AS targetName, null AS targetRole, null AS targetLocation, null AS targetWebsite, null AS targetPublication,
                          null AS connectionNote, null AS connectionTime
                 `;
                 
@@ -2104,8 +2124,8 @@ const NFCTrigger = ({ addNode }) => {
                 // Immediately return to default query without any delay
                 const defaultQuery = `
                   MATCH (u:User)-[r:CONNECTED_TO]->(v:User)
-                  RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, 
-                         v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite
+                  RETURN u.name AS source, u.role AS sourceRole, u.location AS sourceLocation, u.website AS sourceWebsite, u.publication AS sourcePublication,
+                         v.name AS target, v.role AS targetRole, v.location AS targetLocation, v.website AS targetWebsite, v.publication AS targetPublication
                 `;
                 await loadData(null, defaultQuery);
               }
@@ -2277,6 +2297,7 @@ const NFCTrigger = ({ addNode }) => {
               const mergedRole = existingNode.role && existingNode.role !== '' ? existingNode.role : editedNode.role;
               const mergedLocation = existingNode.location && existingNode.location !== '' ? existingNode.location : editedNode.location;
               const mergedWebsite = existingNode.website && existingNode.website !== '' ? existingNode.website : editedNode.website;
+              const mergedPublication = existingNode.publication && existingNode.publication !== '' ? existingNode.publication : editedNode.publication;
               
               // Efficiently merge all relationships and delete old node in a single operation
               await session.run(
@@ -2310,16 +2331,17 @@ const NFCTrigger = ({ addNode }) => {
               // Update the existing node with merged properties
               await session.run(
                 `MATCH (u:User {name: $newName})
-                 SET u.role = $role, u.location = $location, u.website = $website`,
+                 SET u.role = $role, u.location = $location, u.website = $website, u.publication = $publication`,
                 {
                   newName: newName,
                   role: mergedRole,
                   location: mergedLocation,
-                  website: mergedWebsite
+                  website: mergedWebsite,
+                  publication: mergedPublication
                 }
               );
               
-              console.log(`Successfully merged nodes. New node "${newName}" has properties:`, { mergedRole, mergedLocation, mergedWebsite });
+              console.log(`Successfully merged nodes. New node "${newName}" has properties:`, { mergedRole, mergedLocation, mergedWebsite, mergedPublication });
               
               // Focus on the merged node
               await loadData(newName);
@@ -2357,13 +2379,14 @@ const NFCTrigger = ({ addNode }) => {
           try {
             await session.run(
               `MATCH (u:User {name: $oldName}) 
-              SET u.name = $newName, u.role = $role, u.location = $location, u.website = $website`,
+              SET u.name = $newName, u.role = $role, u.location = $location, u.website = $website, u.publication = $publication`,
               {
                 oldName: selectedNode.name,
                 newName: capitalizeWords(editedNode.name),
                 role: editedNode.role || '',
                 location: editedNode.location || '',
-                website: editedNode.website || ''
+                website: editedNode.website || '',
+                publication: editedNode.publication || ''
               }
             );
             await loadData(capitalizeWords(editedNode.name));
@@ -2541,8 +2564,8 @@ const NFCTrigger = ({ addNode }) => {
               setNfcNameInput("");
               setNfcRoleInput("");
               setShowProfilePopup(true);
-              setSelectedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "" });
-              setEditedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "" });
+              setSelectedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "", publication: "" });
+              setEditedNode({ name: capitalizedName, role: nfcRoleInput, location: "", website: "", publication: "" });
             }
           } catch (error) {
             console.error("Error checking for existing node:", error);
@@ -2559,17 +2582,18 @@ const NFCTrigger = ({ addNode }) => {
             // Update the visitor node with the new name and profile information
             await session.run(
               `MATCH (visitor:User {name: $visitorName}) 
-               SET visitor.name = $newName, visitor.role = $role, visitor.location = $location, visitor.website = $website`,
+               SET visitor.name = $newName, visitor.role = $role, visitor.location = $location, visitor.website = $website, visitor.publication = $publication`,
               {
                 visitorName: latestNode,
                 newName: editedNode.name,
                 role: editedNode.role || '',
                 location: editedNode.location || '',
-                website: editedNode.website || ''
+                website: editedNode.website || '',
+                publication: editedNode.publication || ''
               }
             );
             
-            console.log(`Updated visitor profile: ${editedNode.name} with role: ${editedNode.role}, location: ${editedNode.location}, website: ${editedNode.website}`);
+            console.log(`Updated visitor profile: ${editedNode.name} with role: ${editedNode.role}, location: ${editedNode.location}, website: ${editedNode.website}, publication: ${editedNode.publication}`);
             setShowProfilePopup(false);
             
             // Get the NFC holder name from the visitor's connection
@@ -2589,7 +2613,7 @@ const NFCTrigger = ({ addNode }) => {
               });
               
               // Show connection note popup for the new user
-              setSelectedNode({ name: nfcHolderName, role: "", location: "", website: "" });
+              setSelectedNode({ name: nfcHolderName, role: "", location: "", website: "", publication: "" });
               setRelationshipNote("");
               setShowNfcRelationshipPopup(true);
             } else {
@@ -2903,10 +2927,12 @@ ${topConnectors.slice(0, 5).map((connector, index) =>
             const sourceRole = record.get('sourceRole');
             const sourceLocation = record.get('sourceLocation');
             const sourceWebsite = record.get('sourceWebsite');
+            const sourcePublication = record.get('sourcePublication');
             const targetName = record.get('targetName');
             const targetRole = record.get('targetRole');
             const targetLocation = record.get('targetLocation');
             const targetWebsite = record.get('targetWebsite');
+            const targetPublication = record.get('targetPublication');
             const connectionNote = record.get('connectionNote');
             const connectionTime = record.get('connectionTime');
             
@@ -2918,13 +2944,15 @@ ${topConnectors.slice(0, 5).map((connector, index) =>
               nodeInfo.role = sourceRole;
               nodeInfo.location = sourceLocation;
               nodeInfo.website = sourceWebsite;
-              console.log("Found node info from source:", { name: sourceName, role: sourceRole, location: sourceLocation });
+              nodeInfo.publication = sourcePublication;
+              console.log("Found node info from source:", { name: sourceName, role: sourceRole, location: sourceLocation, publication: sourcePublication });
             } else if (targetName && targetName.toLowerCase() === nodeName.toLowerCase()) {
               nodeInfo.name = targetName;
               nodeInfo.role = targetRole;
               nodeInfo.location = targetLocation;
               nodeInfo.website = targetWebsite;
-              console.log("Found node info from target:", { name: targetName, role: targetRole, location: targetLocation });
+              nodeInfo.publication = targetPublication;
+              console.log("Found node info from target:", { name: targetName, role: targetRole, location: targetLocation, publication: targetPublication });
             }
 
             // Count connections
@@ -2984,6 +3012,7 @@ ${topConnectors.slice(0, 5).map((connector, index) =>
 - **Role**: ${nodeInfo.role || 'N/A'}
 - **Location**: ${nodeInfo.location || 'N/A'}
 - **Website**: ${nodeInfo.website || 'N/A'}
+- **Publications**: ${nodeInfo.publication || 'N/A'}
 - **Total Connections**: ${totalConnections}
 
 ## **🔗 Connection Analysis**
@@ -3566,13 +3595,22 @@ return (
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
       /></p>
 
-      <p><strong>Email/Email or Website:</strong>
+      <p><strong>Email or Website:</strong>
       <input 
         name="website" 
         value={editedNode.website || ""} 
         placeholder="your.email@example.com" 
         onChange={handleEditChange}
         style={{ width: "100%", marginTop: "5px", padding: "5px" }}
+      /></p>
+
+      <p><strong>Publications:</strong>
+      <textarea 
+        name="publication" 
+        value={editedNode.publication || ""} 
+        placeholder="Enter research paper links, one per line..." 
+        onChange={handleEditChange}
+        style={{ width: "100%", marginTop: "5px", padding: "5px", minHeight: "80px", resize: "vertical" }}
       /></p>
 
       <p><button onClick={saveNewProfileFromNfc} style={{ marginRight: "10px", padding: "8px 16px" }}>Save Profile</button>
@@ -3590,12 +3628,31 @@ return (
       <p><strong>Name:</strong> {selectedNode?.name}</p>
       {selectedNode?.role && <p><strong>Area of Research:</strong> {selectedNode.role}</p>}
       {selectedNode?.location && <p><strong>Place of Origin:</strong> {selectedNode.location}</p>}
-      {selectedNode?.website && <p><strong>Email or Website:</strong>{" "}
+            {selectedNode?.website && <p><strong>Email or Website:</strong>{" "}
         <a href={selectedNode.website.startsWith('http') ? selectedNode.website : `https://${selectedNode.website}`} target="_blank" rel="noopener noreferrer">
-        {selectedNode.website.length > 30 
-          ? `${selectedNode.website.substring(0, 30)}...`
-        : selectedNode.website}
+          {selectedNode.website.length > 30 
+            ? `${selectedNode.website.substring(0, 30)}...`
+          : selectedNode.website}
         </a>
+      </p>}
+      {selectedNode?.publication && <p><strong>Publications:</strong><br/>
+        <div style={{ 
+          backgroundColor: "#f5f5f5", 
+          padding: "10px", 
+          borderRadius: "4px", 
+          marginTop: "5px",
+          maxHeight: "150px",
+          overflowY: "auto",
+          whiteSpace: "pre-line"
+        }}>
+          {selectedNode.publication.split('\n').map((link, index) => (
+            <div key={index} style={{ marginBottom: "5px" }}>
+              <a href={link.startsWith('http') ? link : `https://${link}`} target="_blank" rel="noopener noreferrer">
+                {link.length > 50 ? `${link.substring(0, 50)}...` : link}
+              </a>
+            </div>
+          ))}
+        </div>
       </p>}
       
 
